@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#173d36">
+  <title>교실 설정 — 오늘도, 차근차근</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="settings.css">
+  <link rel="stylesheet" href="timetable.css">
+</head>
+<body class="settings-page">
+  <div class="grain" aria-hidden="true"></div>
+  <header class="topbar settings-topbar">
+    <a class="brand" href="index.html"><span class="brand-mark">✓</span><span><b>오늘도, 차근차근</b><small>교실 설정실</small></span></a>
+    <div class="top-actions"><a class="line-link" href="roles.html">1인 1역</a><a class="line-link" href="guide.html">사용 설명서</a><a class="line-link" href="student.html" target="_blank">학생 화면 열기 ↗</a><a class="dark-link" href="index.html">교사 화면으로</a></div>
+  </header>
+
+  <main class="settings-shell">
+    <aside class="settings-nav" aria-label="설정 메뉴">
+      <p class="eyebrow">SETTINGS MAP</p>
+      <h1>우리 반의<br>하루 설계하기</h1>
+      <nav><a href="#school">01 학급과 학교급</a><a href="#day">02 일과 시간 기준</a><a href="#builder">03 일과 구조</a><a href="#timetable">04 주간 시간표</a><a href="#subjects">05 과목 관리</a><a href="#routines">06 루틴 및 일정</a><a href="#alerts">07 알림과 데이터</a></nav>
+      <div class="settings-note"><span>자동 저장 아님</span><p>상단 영역의 값은 ‘기본 설정 저장’을 눌러야 반영됩니다.</p></div>
+    </aside>
+
+    <div class="settings-content">
+      <form id="baseSettingsForm">
+        <section class="settings-section" id="school">
+          <header><div><p class="eyebrow">01 · CLASS PROFILE</p><h2>학급과 학교급</h2><p>학교급 프리셋은 기본 수업시간만 바꾸며 개별 설정 일정은 보존합니다.</p></div><span class="section-number">01</span></header>
+          <div class="school-grid" id="schoolLevelOptions">
+            <label><input type="radio" name="schoolLevel" value="elementary"><span><b>초등학교</b><small>수업 40분 · 쉬는 시간 10분</small></span></label>
+            <label><input type="radio" name="schoolLevel" value="middle"><span><b>중학교</b><small>수업 45분 · 쉬는 시간 10분</small></span></label>
+            <label><input type="radio" name="schoolLevel" value="high"><span><b>고등학교</b><small>수업 50분 · 쉬는 시간 10분</small></span></label>
+            <label><input type="radio" name="schoolLevel" value="custom"><span><b>직접 설정</b><small>학교에 맞게 기준시간 입력</small></span></label>
+          </div>
+          <div class="field-grid two"><label>선생님/학급 이름<input id="classNameSetting" type="text" maxlength="24"></label><label>첫 인사말<input id="greetingSetting" type="text" maxlength="60"></label></div>
+          <fieldset class="weekday-field"><legend>기본 운영 요일</legend><div id="activeDayOptions"><label><input type="checkbox" value="1">월</label><label><input type="checkbox" value="2">화</label><label><input type="checkbox" value="3">수</label><label><input type="checkbox" value="4">목</label><label><input type="checkbox" value="5">금</label><label><input type="checkbox" value="6">토</label><label><input type="checkbox" value="0">일</label></div></fieldset>
+        </section>
+
+        <section class="settings-section" id="day">
+          <header><div><p class="eyebrow">02 · TIME STANDARD</p><h2>일과 시간 기준</h2><p>기준값은 새 일정과 ‘기본값 사용’ 일정에 적용됩니다.</p></div><span class="section-number">02</span></header>
+          <div class="metric-grid">
+            <label><span>수업 기본</span><div><input id="classMinutes" type="number" min="10" max="120"><b>분</b></div></label>
+            <label><span>쉬는 시간</span><div><input id="breakMinutes" type="number" min="1" max="60"><b>분</b></div></label>
+            <label><span>사전 알림</span><div><input id="defaultPreAlert" type="number" min="0" max="60"><b>분 전</b></div></label>
+          </div>
+          <div class="common-message-board">
+            <div class="common-message-heading"><span>COMMON NOTICE</span><div><h3>쉬는 시간 공통 안내</h3><p>한 번 저장하면 기존 일정과 앞으로 만드는 시간표에 함께 적용됩니다.</p></div></div>
+            <div class="common-message-grid">
+              <label data-message-tone="green"><span><i>01</i><b>일반 쉬는 시간</b><small>모든 일반 쉬는 시간</small></span><textarea id="breakCommonMessage" rows="3" maxlength="160"></textarea></label>
+              <label data-message-tone="orange"><span><i>02</i><b>중간놀이</b><small>20·30분 중간놀이</small></span><textarea id="middlePlayCommonMessage" rows="3" maxlength="160"></textarea></label>
+              <label data-message-tone="yellow"><span><i>03</i><b>점심시간</b><small>급식 일정 전체</small></span><textarea id="lunchCommonMessage" rows="3" maxlength="160"></textarea></label>
+            </div>
+            <p class="common-message-rule"><b>적용 원칙</b> 일정별 안내를 따로 작성하면 그 문구가 우선합니다. 일정별 안내를 비우면 다시 공통 문구가 표시됩니다.</p>
+          </div>
+          <button class="dark-button settings-save" type="submit">기본 설정 저장</button>
+          <span class="inline-status" id="baseSaveState"></span>
+        </section>
+      </form>
+
+      <section class="settings-section" id="builder">
+        <header><div><p class="eyebrow">03 · DAY BUILDER</p><h2>일과 시간 구조 만들기</h2><p>각 교시의 시작 시각과 쉬는 시간 구조를 먼저 정합니다. 과목은 다음 주간 시간표에서 배정합니다.</p></div><span class="section-number">03</span></header>
+        <div class="builder-grid">
+          <label>1교시 시작<input id="firstStart" type="time"></label>
+          <label>수업 교시 수<select id="periodCount"></select></label>
+          <div class="toggle-box"><label class="switch-line"><span><b>중간놀이</b><small>2교시 뒤 일반 쉬는 시간을 대체</small></span><input id="middleEnabled" type="checkbox" role="switch"></label><label>시간<select id="middleDuration"><option value="20">20분</option><option value="30">30분</option><option value="custom">직접 입력</option></select></label><label id="middleCustomWrap" hidden>직접 입력<input id="middleCustom" type="number" min="1" max="90" value="20"></label></div>
+          <div class="toggle-box"><label class="switch-line"><span><b>점심시간</b><small>선택한 교시 뒤 일반 쉬는 시간을 대체</small></span><input id="lunchEnabled" type="checkbox" role="switch"></label><label>위치<select id="lunchAfter"><option value="3">3교시 후</option><option value="4">4교시 후</option><option value="5">5교시 후</option></select></label><label>시간<input id="lunchDuration" type="number" min="10" max="120"><span class="unit">분</span></label></div>
+        </div>
+        <div class="builder-actions"><button class="line-button" id="generatePreview" type="button">시간 구조 미리보기</button><button class="dark-button" id="applySchedule" type="button" disabled>시간 구조 저장</button></div>
+        <div class="schedule-preview" id="schedulePreview"><div class="preview-empty"><span>⌁</span><p>기준을 정한 뒤 미리보기를 만들어 주세요.</p></div></div>
+      </section>
+
+      <section class="settings-section timetable-section" id="timetable">
+        <header><div><p class="eyebrow">04 · WEEKLY TIMETABLE</p><h2>주간 시간표 설정</h2><p>요일별 교시에 과목을 넣습니다. 비워 둔 교시는 교사·학생 화면에 표시하지 않습니다.</p></div><span class="section-number">04</span></header>
+        <div class="week-navigator">
+          <button id="previousWeek" type="button" aria-label="이전 주">←</button>
+          <div class="week-identity"><span id="weekCurrentBadge">이번 주</span><label><input id="weekDate" type="date" aria-label="시간표 주간 선택"><b id="weekLabel">주차 계산 중</b></label><small id="weekRange"></small></div>
+          <button id="nextWeek" type="button" aria-label="다음 주">→</button>
+          <button class="current-week-button" id="goCurrentWeek" type="button">이번 주로</button>
+        </div>
+        <div class="week-history-bar"><div><i></i><span><b id="weekSavedState">아직 저장되지 않은 주</b><small id="weekSavedDetail">적용하면 이 주의 시간표가 별도로 보관됩니다.</small></span></div><div><button class="line-button" id="copyPreviousWeek" type="button">지난주 시간표 가져오기</button><button class="line-button" id="connectTimetableCsv" type="button">폴더 CSV 다시 동기화</button><button class="line-button" id="downloadTimetableCsv" type="button">CSV 사본</button></div></div>
+        <p class="timetable-csv-status" id="timetableCsvStatus" aria-live="polite">프로그램 폴더의 시간표 CSV 연결을 확인하고 있습니다.</p>
+        <div class="timetable-toolbar"><div><b id="timetableSummary">과목 배정 전</b><small>과목 목록은 아래 ‘과목 관리’에서 추가하거나 수정할 수 있습니다.</small></div><div><button class="line-button" id="loadTimetable" type="button">현재 일정에서 불러오기</button><button class="line-button" id="clearTimetable" type="button">모두 비우기</button></div></div>
+        <div class="timetable-wrap"><div class="timetable-grid" id="timetableGrid"></div></div>
+        <div class="timetable-save-panel">
+          <div class="save-target-heading"><span>저장 위치</span><p>편집한 표를 어느 주의 시간표로 사용할지 선택합니다.</p></div>
+          <div class="save-target-options" role="radiogroup" aria-label="시간표 저장 주차">
+            <label><input type="radio" name="timetableSaveTarget" value="selected" checked><span><i>THIS</i><b>선택한 주에 저장</b><small id="selectedWeekSaveLabel">선택한 주 날짜</small></span></label>
+            <label><input type="radio" name="timetableSaveTarget" value="next"><span><i>NEXT</i><b>다음 주로 저장</b><small id="nextWeekSaveLabel">다음 주 날짜</small></span></label>
+          </div>
+        </div>
+        <div class="timetable-footer"><p><i></i><span><b>적용 범위</b> 선택한 저장 주의 자동 생성 수업·쉬는 시간만 교체하며, 직접 추가한 조회·청소·하교 등의 일정은 유지합니다.</span></p><button class="dark-button" id="applyTimetable" type="button">선택한 주에 저장</button></div>
+      </section>
+
+      <section class="settings-section" id="subjects">
+        <header><div><p class="eyebrow">05 · SUBJECT LIBRARY</p><h2>과목 관리</h2><p>과목 기본 안내는 해당 과목의 모든 사전 알림에 반복 표시됩니다.</p></div><button class="dark-button" id="addSubject" type="button">＋ 과목 추가</button></header>
+        <div class="subject-grid" id="subjectGrid"></div>
+      </section>
+
+      <section class="settings-section" id="routines">
+        <header><div><p class="eyebrow">06 · ROUTINES</p><h2>루틴 및 일정</h2><p>기존과 같은 방식으로 일정을 직접 추가하거나 개별 수정할 수 있습니다.</p></div><button class="dark-button" id="addRoutineSetting" type="button">＋ 개별 일정 추가</button></header>
+        <div class="settings-routine-list" id="settingsRoutineList"></div>
+      </section>
+
+      <section class="settings-section" id="alerts">
+        <header><div><p class="eyebrow">07 · ALERTS & DATA</p><h2>알림과 데이터</h2><p>학생 화면의 표시 방식과 전체 설정 백업을 관리합니다.</p></div><span class="section-number">07</span></header>
+        <div class="setting-lines">
+          <label class="switch-line"><span><b>효과음 사용</b><small>사전 알림과 일정 시작에 효과음을 재생합니다.</small></span><input id="soundSetting" type="checkbox" role="switch"></label>
+          <div class="sound-studio">
+            <div class="sound-studio-head"><span><b>모든 일정의 알림음</b><small>카드를 누르면 이 소리를 선택하고 5회 시험 재생합니다.</small></span><i aria-hidden="true">♪</i></div>
+            <label class="volume-control" for="soundVolume"><span>알림 음량</span><input id="soundVolume" type="range" min="50" max="150" step="10"><output id="soundVolumeValue" for="soundVolume">100%</output></label>
+            <input id="globalSound" type="hidden" value="chime">
+            <div class="sound-test-grid" aria-label="알림음 시험 버튼">
+              <button type="button" data-test-sound="chime" aria-pressed="false"><span>딩·동·댕</span><b>맑은 종</b><small>저장하면 모든 일정에 적용</small></button>
+              <button type="button" data-test-sound="wood" aria-pressed="false"><span>톡·톡</span><b>나무 블록</b><small>저장하면 모든 일정에 적용</small></button>
+              <button type="button" data-test-sound="sparkle" aria-pressed="false"><span>반짝·반짝</span><b>반짝임</b><small>저장하면 모든 일정에 적용</small></button>
+            </div>
+            <p id="soundTestStatus" aria-live="polite">기본 알림음은 맑은 종이며 모든 일정에 같이 적용됩니다.</p>
+          </div>
+          <label class="switch-line"><span><b>움직임 최소화</b><small>알림 화면의 회전과 튀는 움직임을 줄입니다.</small></span><input id="motionSetting" type="checkbox" role="switch"></label>
+          <label class="select-line"><span><b>큰 알림 유지 시간</b><small>이후에는 작은 알림 막대로 축소됩니다.</small></span><select id="alertSeconds"><option value="10">10초</option><option value="15">15초</option><option value="30">30초</option><option value="0">확인할 때까지</option></select></label>
+        </div>
+        <div class="data-actions"><button class="line-button" id="exportBackup" type="button">전체 설정 백업</button><label class="line-button file-label">백업 불러오기<input id="importBackup" type="file" accept="application/json,.json"></label><a class="line-link" href="index.html#files">CSV·명렬표 연결 확인</a></div>
+        <button class="dark-button settings-save" id="saveAlertSettings" type="button">알림 설정 저장</button>
+      </section>
+    </div>
+  </main>
+
+  <dialog class="modal" id="subjectDialog"><form id="subjectForm"><header><div><p class="eyebrow">SUBJECT EDITOR</p><h2 id="subjectDialogTitle">과목 설정</h2></div><button class="close" type="button" data-close="subjectDialog">×</button></header><input type="hidden" id="subjectId"><label>과목 이름<input id="subjectName" type="text" maxlength="20" required></label><label>기본 안내 메시지<textarea id="subjectMessage" rows="4" maxlength="160" placeholder="예: 국어책과 공책을 준비해요."></textarea></label><fieldset><legend>표시 색상</legend><div class="colors"><input type="radio" name="subjectColor" value="green" checked><input type="radio" name="subjectColor" value="orange"><input type="radio" name="subjectColor" value="blue"><input type="radio" name="subjectColor" value="yellow"></div></fieldset><p class="global-sound-note">효과음은 ‘알림과 데이터’에서 고른 한 가지 소리를 모든 과목과 일정에 공통 적용합니다.</p><label class="switch-line compact-switch"><span><b>과목 사용</b></span><input id="subjectEnabled" type="checkbox" role="switch" checked></label><div class="modal-actions"><button class="line-button danger" id="deleteSubject" type="button">삭제</button><button class="line-button" type="button" data-close="subjectDialog">취소</button><button class="dark-button" type="submit">과목 저장</button></div></form></dialog>
+
+  <dialog class="modal" id="routineSettingDialog"><form id="routineSettingForm"><header><div><p class="eyebrow">ROUTINE EDITOR</p><h2 id="routineSettingTitle">일정 설정</h2></div><button class="close" type="button" data-close="routineSettingDialog">×</button></header><input type="hidden" id="settingRoutineId"><div class="two-cols"><label>일정 유형<select id="settingRoutineType"><option value="class">수업</option><option value="break">쉬는 시간</option><option value="other">기타</option></select></label><label>시작 시간<input id="settingRoutineStart" type="time" required></label></div><label id="settingSubjectWrap">과목<select id="settingRoutineSubject"></select></label><div class="two-cols"><label>일정 이름<input id="settingRoutineName" type="text" maxlength="30" required></label><label>상세 구분<input id="settingRoutineCategory" type="text" maxlength="20" placeholder="예: 급식, 정리, 하교"></label></div><div class="two-cols"><label>시간 기준<select id="settingDurationMode"><option value="default">학교급 기본시간 사용</option><option value="custom">개별 시간 사용</option></select></label><label>소요 시간<input id="settingDuration" type="number" min="1" max="240"><span class="unit">분</span><small id="settingEndTime"></small></label></div><div class="two-cols"><label>사전 알림<select id="settingPreAlertMode"><option value="default">기본 설정 사용</option><option value="custom">개별 설정</option><option value="off">알림 없음</option></select></label><label>몇 분 전<input id="settingPreAlertMinutes" type="number" min="0" max="60"><span class="unit">분 전</span></label></div><label>이 일정에 추가할 학생 안내 <small>비우면 쉬는 시간 공통 안내를 사용합니다.</small><textarea id="settingRoutineMessage" rows="3" maxlength="160"></textarea></label><fieldset class="weekday-field"><legend>반복 요일</legend><div id="settingRoutineDays"><label><input type="checkbox" value="1">월</label><label><input type="checkbox" value="2">화</label><label><input type="checkbox" value="3">수</label><label><input type="checkbox" value="4">목</label><label><input type="checkbox" value="5">금</label><label><input type="checkbox" value="6">토</label><label><input type="checkbox" value="0">일</label></div></fieldset><label class="switch-line compact-switch"><span><b>일정 사용</b></span><input id="settingRoutineEnabled" type="checkbox" role="switch" checked></label><div class="modal-actions"><button class="line-button danger" id="deleteSettingRoutine" type="button">삭제</button><button class="line-button" type="button" data-close="routineSettingDialog">취소</button><button class="dark-button" type="submit">일정 저장</button></div></form></dialog>
+
+  <div class="toast" id="settingsToast" role="status" aria-live="polite"></div>
+  <script src="shared.js"></script><script src="settings.js"></script>
+</body>
+</html>

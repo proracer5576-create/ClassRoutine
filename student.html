@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#173c36">
+  <title>우리 반 일과 · 학생 화면</title>
+  <link rel="stylesheet" href="student.css">
+</head>
+<body>
+  <header class="board-header">
+    <div class="class-mark" aria-label="학생 화면">
+      <span class="mark-dot"></span>
+      <div><strong id="className">우리 반</strong><small>STUDENT BOARD</small></div>
+    </div>
+    <div class="date-box"><span id="dateText"></span><b id="clock">00:00</b><small id="seconds">00</small></div>
+    <nav aria-label="화면 도구">
+      <button id="soundButton" class="tool-button" type="button" aria-pressed="true">소리 켜짐</button>
+      <button id="fullButton" class="tool-button" type="button">전체 화면</button>
+      <a class="tool-button teacher-link" href="guide.html">설명서</a>
+      <a class="tool-button teacher-link" href="index.html">교사 화면</a>
+    </nav>
+  </header>
+
+  <main>
+    <section class="now-panel" id="nowPanel">
+      <div class="status-row">
+        <span class="status-pill" id="statusPill">다음 일정</span>
+        <span class="time-range" id="timeRange">--:--</span>
+      </div>
+      <div class="hero-copy">
+        <p class="eyebrow" id="subjectName">오늘도 차근차근</p>
+        <h1 id="routineTitle">일정을 준비하고 있어요</h1>
+        <p class="lead" id="mainMessage">잠시만 기다려 주세요.</p>
+      </div>
+      <div class="message-grid" id="messageGrid"></div>
+      <div class="countdown-box">
+        <span id="countdownLabel">시작까지</span>
+        <strong id="countdown">--분</strong>
+        <div class="progress-track"><i id="progressBar"></i></div>
+      </div>
+    </section>
+
+    <section class="day-panel" aria-labelledby="dayTitle">
+      <div class="section-heading">
+        <div><p>OUR DAY</p><h2 id="dayTitle">오늘의 일과</h2></div>
+        <span id="daySummary">0개의 일정</span>
+      </div>
+      <div class="schedule" id="schedule"></div>
+      <div class="empty-day" id="emptyDay" hidden>
+        <strong>오늘은 등록된 일정이 없어요.</strong>
+        <span>교사 화면의 설정에서 일과를 만들어 주세요.</span>
+      </div>
+    </section>
+  </main>
+
+  <section class="alert-layer" id="alertLayer" hidden aria-live="assertive" aria-modal="true" role="dialog">
+    <div class="alert-card">
+      <div class="alert-top"><span id="alertBadge">2분 전 알림</span><time id="alertTime">09:00</time></div>
+      <p id="alertSubject">다음 수업</p>
+      <h2 id="alertTitle">준비할 시간이에요</h2>
+      <div class="alert-messages" id="alertMessages"></div>
+      <div class="duty-alert-board" id="dutyAlertBoard" hidden></div>
+      <button id="closeAlert" type="button">확인했어요</button>
+    </div>
+  </section>
+
+  <section class="draw-layer" id="drawLayer" hidden aria-live="polite">
+    <div class="draw-card"><small>오늘의 주인공</small><strong id="drawName">김학생</strong><span id="drawNumber">1번</span></div>
+  </section>
+
+  <div class="sound-hint" id="soundHint">화면을 한 번 누르면 알림 소리가 활성화돼요.</div>
+  <script src="shared.js"></script>
+  <script src="student.js"></script>
+</body>
+</html>

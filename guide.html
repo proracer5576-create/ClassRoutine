@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#173d36">
+  <title>사용 설명서 — 오늘도, 차근차근</title>
+  <link rel="stylesheet" href="guide.css">
+</head>
+<body>
+  <div class="reading-progress" id="readingProgress"></div>
+  <header class="guide-header">
+    <a class="guide-brand" href="index.html"><span>✓</span><div><b>오늘도, 차근차근</b><small>TEACHER'S FIELD GUIDE</small></div></a>
+    <nav aria-label="화면 이동"><a href="index.html">교사 화면</a><a href="settings.html">설정</a><a href="roles.html">1인 1역</a><a href="student.html" target="_blank">학생 화면 ↗</a><button id="printGuide" type="button">인쇄·PDF</button></nav>
+  </header>
+
+  <main class="guide-layout">
+    <aside class="guide-map">
+      <div class="edition"><span>CLASSROOM EDITION</span><b>01</b></div>
+      <p class="kicker">USER MANUAL</p>
+      <h1>우리 반의 하루를<br>차근차근 운영하는 법</h1>
+      <p class="intro">설정은 한 번, 운영은 매일 가볍게. 교사·학생·설정·1인 1역 화면을 함께 사용하는 순서대로 안내합니다.</p>
+      <nav id="guideNav">
+        <a href="#quick">01 · 10분 빠른 시작</a>
+        <a href="#screens">02 · 네 화면 이해하기</a>
+        <a href="#schedule">03 · 일과표 만들기</a>
+        <a href="#routine">04 · 일정 세밀하게 수정</a>
+        <a href="#handoff">05 · 수업 메모 전달</a>
+        <a href="#roles">06 · 1인 1역 배정</a>
+        <a href="#files">07 · CSV와 명렬표</a>
+        <a href="#daily">08 · 매일 운영 순서</a>
+        <a href="#help">09 · 문제 해결</a>
+      </nav>
+      <div class="local-address"><small>현재 실행 주소</small><code>127.0.0.1:5173</code><i>이 컴퓨터 안에서만 열립니다.</i></div>
+    </aside>
+
+    <article class="guide-content">
+      <section class="cover-note">
+        <div><p>선생님을 위한 한 장 요약</p><h2>설정에서 하루를 만들고,<br>교사 화면에서 기록하고,<br>학생 화면으로 함께 봅니다.</h2></div>
+        <dl><div><dt>기본 사전 알림</dt><dd>2분 전</dd></div><div><dt>지원 교시</dt><dd>최대 8교시</dd></div><div><dt>시간표 이력</dt><dd>폴더 CSV 자동</dd></div></dl>
+      </section>
+
+      <section class="manual-section" id="quick">
+        <header><span>01</span><div><p>QUICK START</p><h2>처음 10분, 이렇게 시작하세요</h2></div></header>
+        <ol class="step-list">
+          <li><b>설정 화면 열기</b><p>학교급을 고릅니다. 초등 40분, 중학교 45분, 고등학교 50분 수업 기준이 자동으로 입력됩니다.</p><a href="settings.html#school">학교급 설정으로 →</a></li>
+          <li><b>시간 구조 만들기</b><p>1교시 시작, 교시 수, 중간놀이, 점심시간을 정하고 미리보기를 확인한 뒤 시간 구조를 저장합니다.</p><a href="settings.html#builder">시간 구조 설정으로 →</a></li>
+          <li><b>주간 시간표 채우기</b><p>요일×교시 표에서 과목을 선택하고 선택한 주 또는 다음 주를 저장 위치로 정합니다. 다음 주 저장은 현재 주를 바꾸지 않습니다.</p><a href="settings.html#timetable">주간 시간표로 →</a></li>
+          <li><b>기록과 명렬표 연결</b><p>교사 화면에서 기록 CSV와 명렬표 XLSX 또는 CSV를 한 번 연결합니다.</p><a href="index.html#files">파일 연결로 →</a></li>
+          <li><b>1인 1역 정하기</b><p>연결한 명렬표를 불러와 PPT 기본 역할에 자동 또는 수동으로 학생을 배정합니다.</p><a href="roles.html">1인 1역 배정판으로 →</a></li>
+          <li><b>학생 화면 띄우기</b><p>교실 TV나 프로젝터에 학생 화면을 열고 화면을 한 번 눌러 효과음을 활성화합니다.</p><a href="student.html" target="_blank">학생 화면 열기 ↗</a></li>
+        </ol>
+        <div class="callout"><b>먼저 기억할 한 가지</b><p>학교급을 바꾸면 ‘기본시간 사용’ 일정만 새 기준을 따릅니다. ‘개별 시간 사용’ 일정은 입력한 시간이 유지됩니다.</p></div>
+      </section>
+
+      <section class="manual-section" id="screens">
+        <header><span>02</span><div><p>FOUR VIEWS</p><h2>네 화면은 역할이 다릅니다</h2></div></header>
+        <div class="screen-cards">
+          <article class="teacher"><span>TEACHER</span><h3>교사 화면</h3><p>오늘 일정 종료, 수업 메모, 진행 조회, 이름 뽑기와 파일 연결을 담당합니다.</p><ul><li>일정 카드 클릭 큰 보기</li><li>시간 기준 자동 종료</li><li>교사 비공개 메모</li></ul><a href="index.html">교사 화면 열기</a></article>
+          <article class="student"><span>STUDENT</span><h3>학생 화면</h3><p>현재·다음 일정과 학생에게 필요한 안내만 큰 글씨로 보여 줍니다.</p><ul><li>큰 화면 사전 알림</li><li>학생용 인계 메모</li><li>이름 뽑기 결과</li></ul><a href="student.html" target="_blank">학생 화면 열기 ↗</a></article>
+          <article class="setting"><span>SETTINGS</span><h3>설정 화면</h3><p>학교급, 하루 시간표, 과목 메시지와 알림 기준을 설계합니다.</p><ul><li>일과표 자동 생성</li><li>과목·효과음 관리</li><li>전체 백업·복원</li></ul><a href="settings.html">설정 화면 열기</a></article>
+          <article class="roles"><span>ONE ROLE</span><h3>1인 1역</h3><p>명렬표 학생에게 한 가지씩 학급 역할을 배정하고 게시용 표를 만듭니다.</p><ul><li>PPT 기본 역할 23자리</li><li>자동·수동 배정</li><li>역할 편집과 인쇄</li></ul><a href="roles.html">1인 1역 열기</a></article>
+        </div>
+        <p class="privacy-line"><b>학생 화면에는 표시되지 않음:</b> 교사 비공개 메모, 교사용 수업 인계 메모, CSV 기록, 명렬표 전체, 설정 편집 기능</p>
+      </section>
+
+      <section class="manual-section" id="schedule">
+        <header><span>03</span><div><p>DAY BUILDER</p><h2>학교에 맞는 일과표 만들기</h2></div></header>
+        <div class="split-copy">
+          <div><h3>① 기본 시간과 공통 안내 저장</h3><p>학교급을 선택한 뒤 수업·쉬는 시간과 기본 사전 알림을 확인합니다. 일반 쉬는 시간·중간놀이·점심 안내도 여기서 한 번에 작성합니다.</p><div class="preset-table"><span>초등학교 <b>40분</b></span><span>중학교 <b>45분</b></span><span>고등학교 <b>50분</b></span><span>쉬는 시간 <b>10분</b></span></div></div>
+          <div><h3>② 하루 구조 만들기</h3><p>1교시 시작 시각과 1~8교시 수를 선택합니다. 중간놀이는 2교시 뒤의 일반 쉬는 시간을, 점심은 선택한 교시 뒤의 일반 쉬는 시간을 대신합니다.</p><div class="mini-flow"><span>2교시</span><i>→</i><b>중간놀이<br>20·30분</b><i>→</i><span>3교시</span></div></div>
+        </div>
+        <div class="numbered-note"><b>1</b><p><strong>시간 구조 미리보기</strong>에서 교시·쉬는 시간·점심의 시작과 종료를 확인합니다.</p><b>2</b><p><strong>시간 구조 저장</strong> 후 월~금 각 교시의 과목을 선택합니다.</p><b>3</b><p><strong>선택한 주에 저장</strong> 또는 <strong>다음 주로 저장</strong>을 고릅니다. 다음 주 저장 후에는 그 주로 이동해 결과를 보여 줍니다.</p></div>
+        <div class="callout"><b>주차별로 따로 보관</b><p>월요일부터 일요일을 한 주로 계산하고 월요일 날짜를 기준 키로 사용합니다. 과거 주를 열어도 다른 주 시간표는 변경되지 않습니다.</p></div>
+        <details><summary>다음 주 시간표를 미리 만들어도 이번 주가 바뀌나요?</summary><p>바뀌지 않습니다. ‘다음 주로 저장’은 화면에서 수정한 표를 다음 주 월요일 키로 별도 저장하고 다음 주 자동 일정만 만듭니다. 이미 다음 주 시간표가 있으면 수업 개수를 보여 준 뒤 덮어쓸지 확인합니다.</p></details>
+        <details><summary>일과표를 다시 만들면 무엇이 바뀌나요?</summary><p>일과표 생성기로 만든 수업·쉬는 시간·중간놀이·점심 일정은 새 미리보기로 교체됩니다. ‘개별 일정 추가’로 직접 만든 아침활동, 청소, 하교 등의 일정은 그대로 남습니다.</p></details>
+      </section>
+
+      <section class="manual-section" id="routine">
+        <header><span>04</span><div><p>ROUTINE EDITOR</p><h2>일정을 세밀하게 수정하는 법</h2></div></header>
+        <div class="field-guide">
+          <div><b>일정 유형</b><p><strong>수업</strong>은 과목과 연결됩니다. <strong>쉬는 시간</strong>은 기본 쉬는 시간 기준을 사용할 수 있습니다. 급식·조회·청소·하교는 <strong>기타</strong>가 알맞습니다.</p></div>
+          <div><b>시간 기준</b><p>학교급 설정을 계속 따르려면 ‘기본시간 사용’, 이 일정만 다르게 하려면 ‘개별 시간 사용’을 선택합니다.</p></div>
+          <div><b>자동 하교 일정</b><p>현재 주 시간표에서 요일별로 실제 입력된 마지막 과목을 확인합니다. 마지막 과목이 5교시면 13:50, 6교시면 14:40에 하교 일정이 자동으로 나타나므로 같은 주에도 요일마다 하교 시각이 다를 수 있습니다. 시간표 틀이 6교시여도 6교시 과목 칸이 비어 있으면 그날은 5교시 하교입니다. 과목이 없는 요일에는 자동 하교를 만들지 않으며 기본 2분 전 알림을 사용합니다.</p></div>
+          <div><b>사전 알림</b><p>전체 기본값, 일정별 개별 분, 알림 없음 중 선택합니다. 기본값은 시작 2분 전입니다.</p></div>
+          <div><b>학생 안내</b><p>그날 그 일정에서만 필요한 준비물, 자리 이동, 활동 방법 등을 적습니다. 과목 기본 안내와 함께 표시됩니다.</p></div>
+          <div><b>쉬는 시간 공통 안내</b><p>일과 시간 기준에서 일반 쉬는 시간·중간놀이·점심 문구를 각각 저장합니다. 개별 일정의 학생 안내가 비어 있을 때 공통 문구가 표시되며, 개별 문구를 작성하면 그 일정에서만 공통값을 대신합니다.</p></div>
+          <div><b>반복 요일</b><p>체크한 요일에만 일정이 표시됩니다. 요일별 시간표가 다르면 같은 교시 일정을 요일별로 나누어 만들 수 있습니다.</p></div>
+          <div><b>효과음과 색</b><p>효과음은 기본으로 켜져 있고 맑은 종이 선택됩니다. 알림 설정에서 다른 소리를 고르면 모든 과목과 일정에 같은 소리가 적용됩니다. 화면 색상은 일정별 구분을 유지합니다.</p></div>
+          <div><b>음량과 시험 재생</b><p>설정의 ‘알림과 표시’에서 맑은 종·나무 블록·반짝임 카드 중 하나를 누르면 공통 알림음으로 선택하면서 시험합니다. 교실 스피커에 맞게 50~150%로 조절한 뒤 알림 설정을 저장하세요.</p></div>
+        </div>
+        <div class="message-stack"><div><small>과목 기본 안내</small><p>“수학 공책과 필기도구를 준비해요.”</p></div><i>+</i><div><small>일정별 추가 안내</small><p>“오늘은 모둠별 수학 놀이를 합니다.”</p></div><i>+</i><div><small>이전 수업 메모</small><p>“활동지 2쪽을 책상에 펼쳐 주세요.”</p></div></div>
+      </section>
+
+      <section class="manual-section" id="handoff">
+        <header><span>05</span><div><p>CLASS HANDOFF</p><h2>수업이 끝날 때 다음 수업을 준비합니다</h2></div></header>
+        <div class="handoff-flow">
+          <div><span>수업 종료</span><b>일정 종료</b></div><i>→</i><div><span>선택 입력</span><b>학생 안내 메모</b><small>학생 화면에 표시</small></div><i>→</i><div><span>자동 전달</span><b>다음 수업 사전 알림</b><small>쉬는 시간·점심은 건너뜀</small></div>
+        </div>
+        <div class="two-notes"><article><span>학생에게 보일 메모</span><p>준비물, 자리 이동, 미완성 활동처럼 학생이 바로 행동할 수 있는 내용을 적습니다.</p></article><article><span>교사만 볼 메모</span><p>자료 배부, 개별 지원, 확인할 학생처럼 학생 화면에 공개하지 않을 내용을 적습니다.</p></article></div>
+        <div class="callout warm"><b>마지막 수업 뒤에도 전달됩니다</b><p>그날 다음 수업이 없으면 다음 수업일의 첫 수업으로 메모가 이어집니다. 해당 수업을 완료하면 전달 메모는 보관 상태로 전환됩니다.</p></div>
+      </section>
+
+      <section class="manual-section" id="roles">
+        <header><span>06</span><div><p>ONE STUDENT · ONE ROLE</p><h2>명렬표로 1인 1역 정하기</h2></div></header>
+        <div class="field-guide">
+          <div><b>PPT 기본 역할</b><p>칠판, 로켓배송, 환경부, 우유배송, 요일별 크린토피아, 보건도우미, 안내장 확인, 자료정리, 엔지니어, 창문·문틀이 기본으로 준비됩니다.</p></div>
+          <div><b>자동 배정</b><p>명렬표 학생 순서를 무작위로 섞어 한 학생에게 한 자리만 배정합니다. 학생 수보다 자리가 적거나 많으면 바로 알려 줍니다.</p></div>
+          <div><b>수동 배정</b><p>각 역할 카드의 자리에서 학생을 직접 선택합니다. 이미 다른 역할을 맡은 학생은 선택 목록에서 ‘배정됨’으로 표시됩니다.</p></div>
+          <div><b>역할 수정</b><p>역할 이름, 업무 안내, 필요한 학생 수, 분류와 색상을 바꿀 수 있고 우리 반만의 역할도 추가할 수 있습니다.</p></div>
+          <div><b>공유와 복원</b><p>서버 주소로 열면 명렬표는 `학생명렬표.csv`, 배정 결과는 `1인1역_배정.csv`에 자동 저장되어 다른 브라우저 계정에서도 이어집니다.</p></div>
+          <div><b>청소 시간 자동 안내</b><p>평일 13:40~13:50 청소 일정이 자동으로 준비됩니다. 기본 2분 전 알림과 시작 알림에 저장된 1인 1역 역할·학생 이름이 크게 표시되며, 같은 시각의 청소 일정은 중복 생성하지 않습니다.</p></div>
+          <div><b>다른 일정과 청소가 겹칠 때</b><p>13:40~13:50에는 청소를 교사·학생 상단 카드에 우선 표시합니다. 점심이 다시 나타나는 것이 불필요하면 일과 시간 기준에서 점심 종료가 13:40을 넘지 않도록 점심시간 길이를 조정하세요.</p></div>
+          <div><b>한 장 게시용 출력</b><p>‘큰 글씨 출력’을 누르면 모든 역할을 A4 가로 한 페이지에 꽉 차게 자동 배치합니다. 마지막 줄도 빈 칸 없이 넓혀 쓰며 미리보기에서 바로 인쇄·PDF로 저장할 수 있습니다.</p></div>
+        </div>
+        <div class="callout warm"><b>한 학생은 한 가지 역할</b><p>중복 선택을 자동으로 막습니다. 결원이 생기면 빈 자리로 두거나 해당 역할의 필요한 학생 수를 조정하세요.</p></div>
+      </section>
+
+      <section class="manual-section" id="files">
+        <header><span>07</span><div><p>FILES & CONTINUITY</p><h2>CSV 기록과 명렬표를 계속 활용하기</h2></div></header>
+        <div class="file-columns">
+          <article><span class="file-badge">CSV</span><h3>루틴 기록</h3><ol><li>교사 화면에서 ‘연결’을 누릅니다.</li><li>기존 기록 CSV를 선택하거나 새 파일명을 정합니다.</li><li>기존 내용과 브라우저 기록을 합친 후 완료·취소 때마다 자동 저장합니다.</li></ol><p>주간 시간표 이력은 개발 서버가 프로그램 폴더의 `주간시간표_이력.csv`에 자동 보관합니다.</p></article>
+          <article><span class="file-badge xlsx">XLSX</span><h3>우리 반 명렬표</h3><ol><li>명렬표의 ‘연결’을 누릅니다.</li><li>XLSX 또는 CSV 파일을 선택합니다.</li><li>‘번호’와 ‘이름’ 또는 ‘성명’ 열을 찾아 이름 뽑기와 1인 1역에 사용합니다.</li></ol><p>서버로 열면 `학생명렬표.csv` 사본이 프로그램 폴더에도 자동 저장됩니다.</p></article>
+        </div>
+        <div class="safety-box"><span>개인정보</span><p>학생 명렬표와 기록 CSV는 학교가 정한 보안 위치에 보관하세요. 공용 컴퓨터를 다른 학급과 함께 쓸 때는 브라우저 사용자 계정을 분리하는 것이 좋습니다.</p></div>
+        <details><summary>다시 실행했는데 파일 권한 확인이 필요한 이유</summary><p>브라우저 보안 정책에 따라 파일 위치는 기억해도 쓰기 권한을 자동으로 다시 허용하지 않을 수 있습니다. 이때 교사 화면의 ‘연결’을 한 번 누르고 권한을 허용하면 자동 기록이 다시 이어집니다.</p></details>
+        <details><summary>컴퓨터를 옮길 때 설정까지 가져가려면</summary><p>설정 화면의 ‘전체 설정 백업’을 눌러 JSON 파일을 보관하세요. 새 컴퓨터에서 ‘백업 복원’을 선택하면 학교급, 과목, 일정, 기록과 인계 메모를 함께 가져올 수 있습니다.</p></details>
+      </section>
+
+      <section class="manual-section" id="daily">
+        <header><span>08</span><div><p>DAILY RHYTHM</p><h2>매일은 네 단계면 충분합니다</h2></div></header>
+        <div class="day-timeline">
+          <article><time>등교 전</time><b>교사·학생 화면 열기</b><p>학생 화면을 한 번 눌러 소리를 활성화하고 오늘 일과를 확인합니다.</p></article>
+          <article><time>수업 전</time><b>큰 알림 확인</b><p>과목 기본 안내, 일정별 안내, 이전 수업 메모가 학생 화면에 함께 나타납니다.</p></article>
+          <article><time>수업 후</time><b>일정 종료와 인계 메모</b><p>시간이 지나면 화면 진행률은 자동 완료됩니다. 실제 종료 시각과 CSV 기록이 필요하면 ‘일정 종료’를 누르고 다음 수업 메모를 남깁니다.</p></article>
+          <article><time>하교 후</time><b>기록과 다음 날 확인</b><p>오늘 일정 종료 현황과 CSV 연결 상태를 보고 교사 비공개 메모를 정리합니다.</p></article>
+        </div>
+        <p class="sync-note"><i></i><b>실시간 동기화</b> 설정·완료·메모·이름 뽑기 결과는 열린 화면 사이에 바로 전달됩니다. 학생 화면이 열려 있으면 학생 화면이 효과음과 큰 알림을 담당해 중복 알림을 막습니다.</p>
+        <div class="callout"><b>일정 카드를 크게 보기</b><p>교사 화면에서 상단 현재·다음 카드나 오늘의 루틴 행을 누르면 시간과 안내가 알림 화면처럼 크게 열립니다. 이 수동 큰 보기는 알림음을 다시 재생하지 않습니다.</p></div>
+      </section>
+
+      <section class="manual-section" id="help">
+        <header><span>09</span><div><p>TROUBLESHOOTING</p><h2>잘 안 될 때 확인할 것</h2></div></header>
+        <div class="faq-list">
+          <details open><summary>효과음이 들리지 않거나 작아요.</summary><p>설정의 ‘알림과 표시’에서 음량을 높이고 시험 버튼으로 교실 스피커 출력을 먼저 확인하세요. 브라우저는 사용자가 누르기 전 자동 재생을 막으므로 학생 화면을 한 번 클릭한 뒤 상단의 ‘소리 켜짐’을 확인합니다. 일정의 효과음이 ‘소리 없음’인지도 확인하세요.</p></details>
+          <details><summary>오늘 일정이 보이지 않아요.</summary><p>일정 수정에서 ‘일정 사용’과 오늘 요일이 선택됐는지 확인하세요. 일과표를 아직 적용하지 않았다면 설정 화면에서 미리보기를 만든 뒤 적용해야 합니다.</p></details>
+          <details><summary>교사 화면과 학생 화면이 다르게 보여요.</summary><p>두 화면 모두 `127.0.0.1:5173` 주소로 열었는지 확인하고 새로고침하세요. 서로 다른 브라우저나 다른 컴퓨터에서는 브라우저 저장소가 공유되지 않습니다.</p></details>
+          <details><summary>기록 CSV가 자동 저장되지 않아요.</summary><p>교사 화면의 파일 상태를 확인하세요. ‘권한 확인 필요’라면 ‘연결’을 눌러 같은 기록 CSV를 다시 선택하고 읽기·쓰기 권한을 허용합니다.</p></details>
+          <details><summary>시간표 CSV는 어디에 저장되나요?</summary><p>개발 서버가 HTML 파일과 같은 `ClassRoutine` 폴더의 `주간시간표_이력.csv`를 자동으로 읽고 갱신합니다. 설정 화면의 ‘폴더 CSV 다시 동기화’로 즉시 재확인할 수 있습니다.</p></details>
+          <details><summary>시간을 바꿨는데 특정 일정만 그대로예요.</summary><p>그 일정이 ‘개별 시간 사용’으로 설정되어 있기 때문입니다. 학교급 기본시간을 따르게 하려면 일정 수정에서 ‘기본시간 사용’으로 바꿉니다.</p></details>
+          <details><summary>개발 서버 주소가 열리지 않아요.</summary><p>`dev-server.mjs`가 실행 중인지 확인합니다. 서버가 실행되면 콘솔에 `ClassRoutine dev server: http://127.0.0.1:5173`가 표시됩니다.</p></details>
+        </div>
+      </section>
+
+      <footer class="guide-footer"><div><span>✓</span><p><b>오늘도, 차근차근</b><br>우리 반의 좋은 하루를 만드는 작은 반복</p></div><a href="#quick">설명서 처음으로 ↑</a></footer>
+    </article>
+  </main>
+  <script src="guide.js"></script>
+</body>
+</html>

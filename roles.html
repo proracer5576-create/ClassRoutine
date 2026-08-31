@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#173d36">
+  <title>우리 반 1인 1역</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="roles.css">
+</head>
+<body>
+  <div class="grain" aria-hidden="true"></div>
+  <header class="topbar roles-topbar">
+    <a class="brand" href="index.html"><span class="brand-mark">✓</span><span><b>오늘도, 차근차근</b><small>1인 1역</small></span></a>
+    <nav class="roles-nav" aria-label="화면 이동">
+      <a href="index.html">교사 화면</a>
+      <a class="active" href="roles.html" aria-current="page">1인 1역</a>
+      <a href="settings.html">설정</a>
+      <a href="guide.html">설명서</a>
+    </nav>
+  </header>
+
+  <main class="roles-main">
+    <section class="roles-hero">
+      <div>
+        <p class="eyebrow">ONE STUDENT · ONE ROLE</p>
+        <h1>우리 반의 하루를<br><em>함께 움직이는 일</em></h1>
+        <p>명렬표를 불러와 한 학생에게 한 가지 역할을 배정합니다. PPT의 역할 구성을 기본안으로 담았습니다.</p>
+      </div>
+      <div class="hero-stamp" aria-hidden="true"><span>우리 반</span><strong id="heroAssigned">0</strong><small>명 배정</small></div>
+    </section>
+
+    <section class="control-desk" aria-label="배정 도구">
+      <div class="term-control">
+        <label for="termInput">배정 기간</label>
+        <input id="termInput" type="text" maxlength="40" placeholder="예: 2026학년도 2학기">
+        <small id="saveState">불러오는 중…</small>
+      </div>
+      <div class="roster-control">
+        <span class="control-kicker">연결된 명렬표</span>
+        <strong><b id="rosterCount">0</b>명</strong>
+        <small id="rosterState">학생을 불러오는 중…</small>
+        <button class="line-button" id="connectRoster" type="button">엑셀·CSV 불러오기</button>
+      </div>
+      <div class="assignment-actions">
+        <button class="auto-button" id="autoAssign" type="button"><span>✦</span><b>자동 배정</b><small>학생 순서를 고르게 섞어요</small></button>
+        <button class="line-button" id="clearAssignments" type="button">배정 비우기</button>
+        <button class="line-button" id="printBoard" type="button">큰 글씨 출력</button>
+      </div>
+    </section>
+
+    <section class="assignment-summary" aria-live="polite">
+      <div><span>배정 완료</span><strong id="assignedCount">0</strong></div>
+      <div><span>아직 미배정</span><strong id="unassignedCount">0</strong></div>
+      <div><span>전체 자리</span><strong id="slotCount">23</strong></div>
+      <p id="capacityMessage">명렬표와 역할 자리를 비교하고 있어요.</p>
+    </section>
+
+    <section class="unassigned-section" id="unassignedSection">
+      <div class="section-heading"><div><p class="eyebrow">WAITING LIST</p><h2>아직 역할이 없는 학생</h2></div><span id="unassignedBadge">0명</span></div>
+      <div class="student-ribbon" id="unassignedList"></div>
+    </section>
+
+    <section class="role-board-section">
+      <div class="section-heading">
+        <div><p class="eyebrow">CLASS JOB BOARD</p><h2>1인 1역 배정판</h2><p>각 자리에서 학생을 직접 선택할 수 있습니다.</p></div>
+        <button class="dark-button" id="addRole" type="button">＋ 역할 추가</button>
+      </div>
+      <div class="role-board" id="roleBoard"></div>
+      <div class="board-empty" id="boardEmpty" hidden><span>＋</span><h3>역할을 만들어 주세요</h3><p>PPT 기본안을 다시 불러오거나 새 역할을 추가할 수 있습니다.</p><button class="line-button" id="restoreDefaults" type="button">PPT 기본 역할 복원</button></div>
+    </section>
+
+    <section class="file-note">
+      <div><span>CSV</span><p><b>자동 보관:</b> 개발 서버로 열면 <code>학생명렬표.csv</code>와 <code>1인1역_배정.csv</code>가 HTML과 같은 폴더에 저장됩니다.</p></div>
+      <button class="line-button" id="downloadCsv" type="button">배정표 CSV 내려받기</button>
+    </section>
+  </main>
+
+  <dialog class="role-dialog" id="roleDialog">
+    <form id="roleForm">
+      <header><div><p class="eyebrow">ROLE EDITOR</p><h2 id="roleDialogTitle">새 역할 만들기</h2></div><button class="close" type="button" data-close="roleDialog">×</button></header>
+      <input id="roleId" type="hidden">
+      <div class="two-cols">
+        <label>역할 이름<input id="roleName" type="text" maxlength="30" required placeholder="예: 칠판"></label>
+        <label>필요한 학생 수<input id="roleCapacity" type="number" min="1" max="10" value="1" required></label>
+      </div>
+      <label>역할 분류<select id="roleCategory"><option value="classroom">교실 관리</option><option value="delivery">배부·전달</option><option value="cleaning">청소·환경</option><option value="support">생활 지원</option><option value="tech">기기·시설</option></select></label>
+      <label>학생이 볼 업무 안내<textarea id="roleDescription" rows="3" maxlength="120" placeholder="무엇을 언제 하면 되는지 짧게 적어 주세요."></textarea></label>
+      <fieldset><legend>표시 색상</legend><div class="role-colors"><label><input type="radio" name="roleColor" value="coral" checked><i></i>산호</label><label><input type="radio" name="roleColor" value="blue"><i></i>파랑</label><label><input type="radio" name="roleColor" value="yellow"><i></i>노랑</label><label><input type="radio" name="roleColor" value="green"><i></i>초록</label></div></fieldset>
+      <div class="dialog-actions"><button class="line-button danger" id="deleteRole" type="button" hidden>역할 삭제</button><button class="line-button" type="button" data-close="roleDialog">취소</button><button class="dark-button" type="submit">저장</button></div>
+    </form>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script src="shared.js"></script>
+  <script src="roles.js"></script>
+</body>
+</html>

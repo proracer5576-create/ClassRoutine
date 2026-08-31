@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#173d36">
+  <title>1인 1역 큰 글씨 출력</title>
+  <link rel="stylesheet" href="roles-print.css">
+</head>
+<body>
+  <header class="print-toolbar">
+    <div><a href="roles.html">← 배정 화면</a><span></span><strong>한 장 출력 미리보기</strong><small>A4 가로 · 모든 역할을 한 페이지에 꽉 차게</small></div>
+    <label><input id="showEmpty" type="checkbox" checked> 빈 자리 표시</label>
+    <button id="printNow" type="button">인쇄·PDF</button>
+  </header>
+
+  <main id="printPages" aria-live="polite">
+    <div class="loading"><b>배정표를 불러오는 중입니다.</b><span>잠시만 기다려 주세요.</span></div>
+  </main>
+
+  <script src="shared.js"></script>
+  <script src="roles-print.js"></script>
+</body>
+</html>
