@@ -3,7 +3,8 @@ const $ = selector => document.querySelector(selector);
 const COLORS = { green: "#2f7666", orange: "#e76843", blue: "#4d7ea8", yellow: "#c99716" };
 const escapeHtml = value => String(value ?? "").replace(/[&<>'"]/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" })[char]);
 let settings = CR.getSettings(), subjects = CR.getSubjects(), routines = CR.getRoutines(), records = CR.getRecords();
-let alertTimer = null, drawTimer = null;
+let alertTimer = null, drawTimer = null, activeAlert = null;
+let studentTimerLastId = null, studentTimerDismissedId = null, studentTimerFinishedId = null;
 
 function todayRoutines() { const now = new Date(); return routines.filter(item => CR.activeOn(item, now)).sort((a, b) => a.startTime.localeCompare(b.startTime)); }
 function completed(id) { return records.some(item => item.date === CR.dateKey() && item.routineId === id && item.status === "완료"); }
@@ -13,6 +14,44 @@ function titleOf(routine) { const subject = subjectOf(routine); if (routine.type
 function currentAndNext() { const now = new Date(), minute = now.getHours() * 60 + now.getMinutes(), list = todayRoutines(), current = CR.primaryCurrentRoutine(list.filter(item => !completed(item.id)), now, settings), next = list.find(item => CR.toMinutes(item.startTime) > minute && !completed(item.id)); return { current, next, featured: current || next || null, minute }; }
 
 function renderClock() { const now = new Date(); $("#dateText").textContent = new Intl.DateTimeFormat("ko-KR", { month: "long", day: "numeric", weekday: "long" }).format(now); $("#clock").textContent = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`; $("#seconds").textContent = String(now.getSeconds()).padStart(2, "0"); }
+function renderStudentTimer() {
+  const timer = CR.load(CR.KEYS.quickTimer, null), box = $("#studentTimer"), layer = $("#studentTimerLayer"), remaining = CR.quickTimerRemaining(timer);
+  box.classList.remove("finished");
+  if (!timer || (remaining <= 0 && Date.now() - Number(timer.endsAt) >= 10000)) { box.hidden = true; layer.hidden = true; if (!timer) { studentTimerLastId = null; studentTimerDismissedId = null; studentTimerFinishedId = null; } return; }
+  if (studentTimerLastId !== timer.id) { studentTimerLastId = timer.id; studentTimerDismissedId = null; studentTimerFinishedId = null; }
+  const totalSeconds = Math.max(1, Math.round((Number(timer.endsAt) - Number(timer.startedAt || timer.endsAt)) / 1000) || Number(timer.durationMinutes) * 60 || 60);
+  const progress = Math.max(0, Math.min(100, (totalSeconds - remaining) / totalSeconds * 100));
+  const endTime = new Date(Number(timer.endsAt)).toLocaleTimeString("ko-KR", { hour:"2-digit", minute:"2-digit", hour12:false });
+  box.hidden = false;
+  $("#studentTimerDuration").textContent = `${timer.durationMinutes}분 타이머`;
+  $("#studentTimerStatus").textContent = remaining > 0 ? "남은 시간" : "시간이 끝났어요!";
+  $("#studentTimerLarge").textContent = CR.formatCountdown(remaining);
+  $("#studentTimerProgress").style.width = `${progress}%`;
+  $("#studentTimerEnd").textContent = `${endTime} 종료 예정`;
+  layer.classList.toggle("finished", remaining <= 0);
+  if (remaining > 0) { $("#studentTimerDisplay").textContent = CR.formatCountdown(remaining); layer.hidden = studentTimerDismissedId === timer.id; }
+  else { box.classList.add("finished"); $("#studentTimerDisplay").textContent = "완료!"; if (studentTimerFinishedId !== timer.id) { studentTimerFinishedId = timer.id; studentTimerDismissedId = null; } layer.hidden = studentTimerDismissedId === timer.id; }
+}
+function liveTime(now = new Date()) { return `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}:${String(now.getSeconds()).padStart(2, "0")}`; }
+function startCountdown(routine, now = new Date()) {
+  const currentSeconds = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
+  const startSeconds = CR.toMinutes(routine.startTime) * 60, endSeconds = startSeconds + CR.durationFor(routine, settings) * 60, difference = startSeconds - currentSeconds;
+  if (difference > 0) {
+    const hours = Math.floor(difference / 3600), minutes = Math.floor(difference % 3600 / 60), seconds = difference % 60;
+    return { label: "시작까지", value: hours ? `${hours}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}` : `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}` };
+  }
+  if (difference > -60) return { label: "현재 상태", value: "지금 시작" };
+  return currentSeconds < endSeconds ? { label: "현재 상태", value: "진행 중" } : { label: "현재 상태", value: "종료됨" };
+}
+function updateAlertTimes() {
+  if (!activeAlert) return;
+  const now = new Date(), state = startCountdown(activeAlert.routine, now);
+  $("#alertCurrentTime").textContent = liveTime(now);
+  $("#alertTime").textContent = activeAlert.routine.startTime;
+  $("#alertEndTime").textContent = `${CR.endTime(activeAlert.routine, settings)} 종료`;
+  $("#alertCountdownLabel").textContent = state.label;
+  $("#alertCountdown").textContent = state.value;
+}
 function renderHeader() { $("#className").textContent = settings.className || "우리 반"; $("#soundButton").textContent = settings.sound ? "소리 켜짐" : "소리 꺼짐"; $("#soundButton").setAttribute("aria-pressed", String(settings.sound)); document.documentElement.classList.toggle("reduce-motion", settings.reducedMotion); }
 function renderFeatured() {
   const { current, next, featured, minute } = currentAndNext(), panel = $("#nowPanel");
@@ -36,17 +75,18 @@ function renderAll() { settings = CR.getSettings(); subjects = CR.getSubjects();
 
 function playSound(type = "chime") { CR.playSound(type); }
 function activateSound() { CR.activateSound(); $("#soundHint").classList.add("ready"); }
-function dutyBoardHtml() { const roles = CR.dutyAssignments(); return roles.length ? roles.map(role => { const names = role.students.map(student => student ? `<span><b>${escapeHtml(student.number)}번</b>${escapeHtml(student.name)}</span>` : `<span class="empty-duty">미배정</span>`).join(""); return `<article class="duty-alert-card" data-color="${escapeHtml(role.color)}"><strong>${escapeHtml(role.name)}</strong><div>${names}</div></article>`; }).join("") : `<div class="duty-board-empty">1인 1역 배정표가 아직 없어요. 선생님과 역할을 확인해요.</div>`; }
-function showAlert(routine, phase) { const messages = CR.messagesFor(routine), subject = subjectOf(routine), cleaning = CR.isCleaningRoutine(routine); clearTimeout(alertTimer); $("#alertLayer").classList.toggle("cleaning-alert", cleaning); $("#alertBadge").textContent = phase === "pre" ? `${CR.preAlertFor(routine, settings)}분 전 알림` : "지금 시작해요"; $("#alertTime").textContent = routine.startTime; $("#alertSubject").textContent = cleaning ? "우리 반 1인 1역" : subject?.name || routine.category; $("#alertTitle").textContent = routine.title; const rows = [["과목 안내", messages.subject], ["일정 안내", messages.event], ["이전 수업 메모", messages.handoff]].filter(([, value]) => value); $("#alertMessages").innerHTML = rows.length ? rows.map(([label, value]) => `<div class="alert-message"><b>${label}</b>${escapeHtml(value)}</div>`).join("") : `<div class="alert-message">${phase === "pre" ? "다음 일정을 준비해 주세요." : "자, 함께 시작해 볼까요?"}</div>`; $("#dutyAlertBoard").hidden = !cleaning; $("#dutyAlertBoard").innerHTML = cleaning ? dutyBoardHtml() : ""; $("#alertLayer").hidden = false; playSound(routine.sound); const seconds = cleaning ? Math.max(30, Number(settings.alertDisplaySeconds) || 0) : Number(settings.alertDisplaySeconds); if (seconds > 0) alertTimer = setTimeout(closeAlert, seconds * 1000); }
-function closeAlert() { clearTimeout(alertTimer); $("#alertLayer").hidden = true; }
+function dutyBoardHtml() { const roles = CR.dutyAssignmentsForDate(new Date()); return roles.length ? roles.map(role => { const names = role.students.map(student => student ? `<span><b>${escapeHtml(student.number)}번</b>${escapeHtml(student.name)}</span>` : `<span class="empty-duty">미배정</span>`).join(""); return `<article class="duty-alert-card" data-color="${escapeHtml(role.color)}"><strong>${escapeHtml(role.name)}</strong><div>${names}</div></article>`; }).join("") : `<div class="duty-board-empty">1인 1역 배정표가 아직 없어요. 선생님과 역할을 확인해요.</div>`; }
+function showAlert(routine, phase) { const messages = CR.messagesFor(routine), subject = subjectOf(routine), cleaning = CR.isCleaningRoutine(routine); clearTimeout(alertTimer); activeAlert = { routine, phase }; $("#alertLayer").classList.toggle("cleaning-alert", cleaning); $("#alertBadge").textContent = phase === "pre" ? `${CR.preAlertFor(routine, settings)}분 전 알림` : "지금 시작해요"; updateAlertTimes(); $("#alertSubject").textContent = cleaning ? "우리 반 1인 1역" : subject?.name || routine.category; $("#alertTitle").textContent = routine.title; const rows = [["과목 안내", messages.subject], ["일정 안내", messages.event], ["이전 수업 메모", messages.handoff]].filter(([, value]) => value); $("#alertMessages").innerHTML = rows.length ? rows.map(([label, value]) => `<div class="alert-message"><b>${label}</b>${escapeHtml(value)}</div>`).join("") : `<div class="alert-message">${phase === "pre" ? "다음 일정을 준비해 주세요." : "자, 함께 시작해 볼까요?"}</div>`; $("#dutyAlertBoard").hidden = !cleaning; $("#dutyAlertBoard").innerHTML = cleaning ? dutyBoardHtml() : ""; $("#alertLayer").hidden = false; playSound(routine.sound); window.classRoutineDesktop?.notifyRoutine({ id: routine.id, title: titleOf(routine), time: routine.startTime, phase, body: `${routine.startTime} · ${messages.event || messages.handoff || messages.subject || (phase === "pre" ? "곧 시작해요." : "시작할 시간이에요.")}` }); const seconds = cleaning ? Math.max(30, Number(settings.alertDisplaySeconds) || 0) : Number(settings.alertDisplaySeconds); if (seconds > 0) alertTimer = setTimeout(closeAlert, seconds * 1000); }
+function closeAlert() { clearTimeout(alertTimer); CR.stopSound(); $("#alertLayer").hidden = true; activeAlert = null; }
 function checkAlarms() { const now = new Date(), minute = now.getHours() * 60 + now.getMinutes(), key = `classRoutine.alerted.v3.${CR.dateKey()}`, alerted = CR.load(key, []); for (const routine of todayRoutines()) { const pre = CR.preAlertFor(routine, settings), phases = []; if (pre !== null && minute === CR.toMinutes(routine.startTime) - pre) phases.push("pre"); if (minute === CR.toMinutes(routine.startTime)) phases.push("start"); const phase = phases.find(value => !alerted.includes(`${routine.id}:${value}`)); if (phase) { alerted.push(`${routine.id}:${phase}`); CR.save(key, alerted); showAlert(routine, phase); return; } } }
 function checkDraw() { const result = CR.load("classRoutine.drawResult", null); if (!result || Date.now() - Number(result.at) > 15000 || checkDraw.last === result.at) return; checkDraw.last = result.at; clearTimeout(drawTimer); $("#drawName").textContent = result.name; $("#drawNumber").textContent = `${result.number}번`; $("#drawLayer").hidden = false; playSound("sparkle"); drawTimer = setTimeout(() => $("#drawLayer").hidden = true, 6500); }
 
 $("#closeAlert").onclick = closeAlert;
 $("#drawLayer").onclick = () => $("#drawLayer").hidden = true;
+$("#studentTimerMinimize").onclick = () => { const timer = CR.load(CR.KEYS.quickTimer, null); studentTimerDismissedId = timer?.id || null; $("#studentTimerLayer").hidden = true; };
 $("#soundButton").onclick = () => { settings.sound = !settings.sound; CR.setSettings(settings); activateSound(); if (settings.sound) playSound(); };
 $("#fullButton").onclick = async () => { activateSound(); if (!document.fullscreenElement) await document.documentElement.requestFullscreen?.(); else await document.exitFullscreen?.(); };
 document.addEventListener("pointerdown", activateSound, { once:true });
-CR.onChange(() => { renderAll(); checkDraw(); });
-renderAll(); checkDraw(); localStorage.setItem("classRoutine.studentHeartbeat", Date.now());
-setInterval(() => { localStorage.setItem("classRoutine.studentHeartbeat", Date.now()); renderClock(); checkAlarms(); checkDraw(); if (new Date().getSeconds() === 0) { renderFeatured(); renderSchedule(); } }, 1000);
+CR.onChange(() => { renderAll(); renderStudentTimer(); checkDraw(); });
+renderAll(); renderStudentTimer(); checkDraw(); localStorage.setItem("classRoutine.studentHeartbeat", Date.now());
+setInterval(() => { localStorage.setItem("classRoutine.studentHeartbeat", Date.now()); renderClock(); renderStudentTimer(); updateAlertTimes(); checkAlarms(); checkDraw(); if (new Date().getSeconds() === 0) { renderFeatured(); renderSchedule(); } }, 1000);

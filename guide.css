@@ -1,9 +1,7 @@
-@import url('https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&family=Manrope:wght@600;700;800&family=Noto+Sans+KR:wght@400;500;600;700;800;900&display=swap');
-
 :root { --forest:#173d36; --green:#2f7666; --orange:#eb6942; --paper:#f7f1e5; --sheet:#fffdf7; --ink:#18332e; --muted:#6e7d78; --line:rgba(24,61,54,.16); }
 * { box-sizing:border-box; }
 html { scroll-behavior:smooth; scroll-padding-top:90px; }
-body { margin:0; color:var(--ink); background:var(--paper); font-family:"Noto Sans KR",sans-serif; }
+body { margin:0; color:var(--ink); background:var(--paper); font-family:"Malgun Gothic","Apple SD Gothic Neo",sans-serif; }
 body::before { content:""; position:fixed; inset:0; pointer-events:none; opacity:.17; background-image:radial-gradient(#5b6b65 .5px,transparent .5px); background-size:5px 5px; }
 a { color:inherit; }
 button { font:inherit; }

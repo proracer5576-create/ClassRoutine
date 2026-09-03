@@ -1,8 +1,6 @@
-@import url('https://fonts.googleapis.com/css2?family=Gowun+Dodum&family=Manrope:wght@600;700;800&family=Noto+Sans+KR:wght@400;500;600;700;800;900&display=swap');
-
 :root { --ink:#18342f; --muted:#647671; --paper:#f7f3e8; --cream:#fffdf7; --green:#267565; --orange:#ec7049; --line:rgba(31,73,64,.14); --accent:#2f7666; }
 * { box-sizing:border-box; }
-body { margin:0; min-height:100vh; color:var(--ink); background:linear-gradient(120deg,#f4efe2 0%,#fbf9f2 45%,#e9f1eb 100%); font-family:"Noto Sans KR",sans-serif; overflow-x:hidden; }
+body { margin:0; min-height:100vh; color:var(--ink); background:linear-gradient(120deg,#f4efe2 0%,#fbf9f2 45%,#e9f1eb 100%); font-family:"Malgun Gothic","Apple SD Gothic Neo",sans-serif; overflow-x:hidden; }
 body::before { content:""; position:fixed; inset:0; pointer-events:none; opacity:.22; background-image:radial-gradient(#2b6658 .55px,transparent .55px); background-size:6px 6px; }
 button,a { font:inherit; }
 button { color:inherit; }
@@ -16,6 +14,12 @@ button { color:inherit; }
 .date-box b { font:800 clamp(29px,3vw,44px)/1 Manrope,sans-serif; letter-spacing:-.04em; }
 .date-box small { font:700 15px Manrope,sans-serif; color:var(--orange); }
 nav { justify-self:end; display:flex; gap:8px; }
+.student-timer { min-height:42px; padding:5px 15px; display:flex; align-items:center; gap:9px; border-radius:999px; color:#fff; background:var(--green); box-shadow:3px 3px 0 #f1c95c; font-variant-numeric:tabular-nums; }
+.student-timer[hidden] { display:none; }
+.student-timer span { color:#f5d886; font-size:10px; font-weight:900; letter-spacing:.08em; }
+.student-timer b { font:800 19px/1 Manrope,sans-serif; }
+.student-timer.finished { background:var(--orange); animation:studentTimerPulse .55s ease-in-out 4 alternate; }
+@keyframes studentTimerPulse { to { transform:translateY(-3px); box-shadow:0 7px 0 #f5d886; } }
 .tool-button { min-height:42px; padding:0 15px; border:1px solid var(--line); border-radius:999px; background:rgba(255,255,255,.68); text-decoration:none; cursor:pointer; font-size:13px; font-weight:700; display:inline-flex; align-items:center; justify-content:center; }
 .tool-button:hover { background:#fff; transform:translateY(-1px); }
 .teacher-link { color:var(--green); }
@@ -64,6 +68,14 @@ main { position:relative; z-index:1; width:min(1540px,calc(100% - 5vw)); margin:
 .alert-top { display:flex; justify-content:space-between; align-items:center; }
 .alert-top span { padding:10px 16px; border-radius:999px; background:rgba(255,255,255,.16); font-weight:800; }
 .alert-top time { font:800 clamp(35px,5vw,68px)/1 Manrope,sans-serif; }
+.alert-time-board { display:grid; grid-template-columns:1.15fr .9fr 1fr; margin:clamp(20px,3vw,38px) 0 18px; border:1px solid rgba(255,255,255,.25); border-radius:22px; overflow:hidden; background:rgba(76,19,11,.14); box-shadow:0 18px 55px rgba(76,19,11,.14); }
+.alert-time-cell { min-width:0; min-height:clamp(105px,12vw,155px); padding:16px; display:flex; flex-direction:column; align-items:center; justify-content:center; border-left:1px solid rgba(255,255,255,.2); }
+.alert-time-cell:first-child { border-left:0; }
+.alert-time-cell span { margin-bottom:10px; color:rgba(255,255,255,.72); font-size:clamp(12px,1.3vw,18px); font-weight:900; letter-spacing:.08em; }
+.alert-time-cell time,.alert-time-cell strong { display:block; color:#fff; font:800 clamp(34px,4.4vw,64px)/1 Manrope,sans-serif; font-variant-numeric:tabular-nums; letter-spacing:-.055em; white-space:nowrap; }
+.alert-time-cell.start time,.alert-time-cell.remaining strong { color:#ffe092; }
+.alert-time-cell small { min-height:18px; margin-top:9px; color:rgba(255,255,255,.68); font-size:clamp(11px,1vw,15px); font-weight:800; }
+.alert-time-cell.remaining { background:rgba(255,224,146,.11); }
 .alert-card>p { margin:45px 0 8px; color:#ffe0aa; font-weight:800; font-size:clamp(19px,2vw,29px); }
 .alert-card h2 { margin:0; font-size:clamp(52px,7vw,105px); line-height:1.05; letter-spacing:-.06em; word-break:keep-all; }
 .alert-messages { display:grid; gap:12px; margin:38px 0; }
@@ -73,6 +85,9 @@ main { position:relative; z-index:1; width:min(1540px,calc(100% - 5vw)); margin:
 .alert-layer.cleaning-alert { padding:1.5vw; }
 .cleaning-alert .alert-card { width:min(1540px,97vw); max-height:97vh; padding:clamp(24px,3vw,44px); border-radius:30px; background:linear-gradient(145deg,#24695b,#173c36); }
 .cleaning-alert .alert-card>p { margin:18px 0 5px; }
+.cleaning-alert .alert-time-board { margin:12px 0 8px; }
+.cleaning-alert .alert-time-cell { min-height:82px; padding:9px 12px; }
+.cleaning-alert .alert-time-cell time,.cleaning-alert .alert-time-cell strong { font-size:clamp(28px,3.2vw,48px); }
 .cleaning-alert .alert-card h2 { font-size:clamp(42px,5vw,72px); }
 .cleaning-alert .alert-messages { margin:14px 0 12px; }
 .cleaning-alert .alert-message { padding:10px 15px; font-size:clamp(15px,1.35vw,21px); }
@@ -98,5 +113,73 @@ main { position:relative; z-index:1; width:min(1540px,calc(100% - 5vw)); margin:
 .reduce-motion * { scroll-behavior:auto!important; animation:none!important; transition:none!important; }
 @media (max-width:980px) { .board-header { grid-template-columns:1fr auto; }.date-box { grid-row:2; grid-column:1/-1; justify-self:center; }.board-header nav { grid-column:2; grid-row:1; }.teacher-link { display:none; } main { grid-template-columns:1fr; }.now-panel { min-height:560px; }.day-panel { min-height:0; } }
 @media (max-width:900px) { .duty-alert-board { grid-template-columns:repeat(3,minmax(0,1fr)); } .cleaning-alert .alert-card { overflow:auto; } }
-@media (max-width:600px) { .board-header { gap:10px; padding:12px 16px; }.tool-button { min-height:38px; padding:0 10px; font-size:11px; } .date-box span { display:none; } main { width:calc(100% - 24px); margin-top:14px; }.now-panel,.day-panel { border-radius:24px; }.hero-copy h1 { font-size:48px; }.lead { font-size:23px; }.schedule-item { grid-template-columns:62px 8px 1fr; }.schedule-item::after { left:81px; }.schedule-item>span { display:none; } }
+@media (max-width:600px) { .board-header { gap:10px; padding:12px 16px; }.tool-button { min-height:38px; padding:0 10px; font-size:11px; } .student-timer { min-height:38px; padding:4px 10px; }.student-timer span { display:none; }.student-timer b { font-size:16px; }.date-box span { display:none; } main { width:calc(100% - 24px); margin-top:14px; }.now-panel,.day-panel { border-radius:24px; }.hero-copy h1 { font-size:48px; }.lead { font-size:23px; }.schedule-item { grid-template-columns:62px 8px 1fr; }.schedule-item::after { left:81px; }.schedule-item>span { display:none; } }
+@media (max-width:600px) { .alert-time-board { grid-template-columns:1fr 1fr; }.alert-time-cell { min-height:78px; padding:10px 7px; }.alert-time-cell time,.alert-time-cell strong { font-size:clamp(25px,7vw,36px); }.alert-time-cell.remaining { grid-column:1/-1; border-top:1px solid rgba(255,255,255,.2); border-left:0; }.alert-card>p { margin-top:24px; } }
 @media (max-width:600px) { .duty-alert-board { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+
+/* Shared quick timer: large enough to read from the back of the classroom. */
+.student-timer-layer{position:fixed;z-index:29;inset:0;display:grid;place-items:center;padding:3vw;background:rgba(8,30,25,.84);backdrop-filter:blur(17px)}
+.student-timer-layer[hidden]{display:none}
+.student-timer-card{position:relative;width:min(1120px,96vw);min-height:min(790px,94vh);overflow:hidden;padding:clamp(36px,6vw,82px);display:flex;flex-direction:column;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,.22);border-radius:42px;text-align:center;color:#fff;background:radial-gradient(circle at 50% 12%,rgba(245,216,134,.23),transparent 30%),linear-gradient(145deg,#267565,#133d35);box-shadow:0 38px 140px rgba(0,0,0,.4)}
+.student-timer-card::before{content:"";position:absolute;inset:-70%;pointer-events:none;opacity:.13;background:repeating-conic-gradient(from 0deg,transparent 0 12deg,rgba(255,255,255,.25) 12deg 15deg);animation:studentTimerSpin 80s linear infinite}
+@keyframes studentTimerSpin{to{transform:rotate(1turn)}}
+.student-timer-card>*{position:relative;z-index:1}
+.student-timer-card>p{margin:0 0 10px;color:#f5d886;font:900 clamp(13px,1.3vw,18px)/1 Manrope,sans-serif;letter-spacing:.3em}
+.student-timer-card>span{padding:9px 18px;border:1px solid rgba(255,255,255,.2);border-radius:999px;background:rgba(255,255,255,.1);font-size:clamp(14px,1.4vw,20px);font-weight:800}
+.student-timer-card h2{margin:clamp(28px,5vh,54px) 0 0;color:rgba(255,255,255,.74);font-size:clamp(25px,3vw,43px);letter-spacing:.14em}
+#studentTimerLarge{display:block;margin:8px 0 25px;color:#ffdc82;font:900 clamp(120px,22vw,270px)/.88 Manrope,sans-serif;font-variant-numeric:tabular-nums;letter-spacing:-.075em;text-shadow:0 14px 50px rgba(0,0,0,.23)}
+.student-timer-progress{width:min(820px,85%);height:17px;overflow:hidden;border:1px solid rgba(255,255,255,.18);border-radius:999px;background:rgba(255,255,255,.11)}
+.student-timer-progress i{display:block;width:0;height:100%;border-radius:inherit;background:linear-gradient(90deg,#ec7049,#ffdc82);transition:width .8s linear}
+#studentTimerEnd{margin-top:16px;color:rgba(255,255,255,.66);font-size:clamp(14px,1.4vw,20px);font-weight:750}
+#studentTimerMinimize{margin-top:clamp(30px,5vh,52px);min-width:170px;padding:14px 23px;border:1px solid rgba(255,255,255,.3);border-radius:999px;color:#fff;background:rgba(255,255,255,.1);font-weight:850;cursor:pointer}
+#studentTimerMinimize:hover{background:rgba(255,255,255,.2)}
+.student-timer-layer.finished .student-timer-card{background:radial-gradient(circle at 50% 20%,rgba(255,220,130,.34),transparent 32%),linear-gradient(145deg,#df6540,#8d3326)}
+.student-timer-layer.finished #studentTimerLarge{animation:studentTimerFinishBig .5s ease-in-out 4 alternate}
+.student-timer-layer.finished .student-timer-progress i{background:#fff1c6}
+@keyframes studentTimerFinishBig{to{transform:scale(1.06);text-shadow:0 0 50px rgba(255,220,130,.6)}}
+@media(max-width:600px){.student-timer-layer{padding:2vw}.student-timer-card{width:97vw;min-height:90vh;padding:30px 16px;border-radius:26px}#studentTimerLarge{font-size:clamp(88px,30vw,160px)}.student-timer-progress{width:92%;height:12px}}
+
+/* Cleaning alert: use the entire browser as a readable duty board. */
+.alert-layer.cleaning-alert{padding:0}
+.cleaning-alert .alert-card{width:100vw;max-width:none;height:100dvh;max-height:none;padding:clamp(20px,2.2vw,38px);border-radius:0;display:flex;flex-direction:column;overflow:auto}
+.cleaning-alert .alert-top span{font-size:clamp(24px,1.8vw,32px)}
+.cleaning-alert .alert-top time{font-size:clamp(46px,4vw,68px)}
+.cleaning-alert .alert-time-board{width:min(1280px,100%);align-self:center;margin:10px auto}
+.cleaning-alert .alert-time-cell{min-height:108px;padding:12px 16px}
+.cleaning-alert .alert-time-cell span,.cleaning-alert .alert-time-cell small{font-size:clamp(24px,1.55vw,29px);letter-spacing:.04em}
+.cleaning-alert .alert-time-cell time,.cleaning-alert .alert-time-cell strong{font-size:clamp(48px,4vw,70px)}
+.cleaning-alert .alert-card>p{margin:8px 0 2px;font-size:clamp(25px,2vw,36px)}
+.cleaning-alert .alert-card h2{font-size:clamp(60px,5.5vw,92px);line-height:1}
+.cleaning-alert .alert-messages{width:min(1600px,100%);margin:10px auto;gap:10px}
+.cleaning-alert .alert-message{padding:13px 18px;border-radius:10px;font-size:clamp(32px,2.2vw,42px);line-height:1.3}
+.cleaning-alert .alert-message b{display:inline;margin:0 14px 0 0;font-size:inherit}
+.cleaning-alert .duty-alert-board{width:min(1820px,100%);grid-template-columns:repeat(5,minmax(0,1fr));gap:clamp(10px,1vw,18px);margin:12px auto;flex:1}
+.cleaning-alert .duty-alert-card{min-width:0;min-height:132px;padding:clamp(13px,1.2vw,20px);border-top-width:9px;display:flex;flex-direction:column;justify-content:center}
+.cleaning-alert .duty-alert-card>strong{margin-bottom:10px;font-size:clamp(38px,2.5vw,52px);line-height:1.1}
+.cleaning-alert .duty-alert-card>div{gap:8px}
+.cleaning-alert .duty-alert-card span{padding:7px 10px;font-size:clamp(32px,2vw,44px);line-height:1.1}
+.cleaning-alert .duty-alert-card span b{font-size:inherit}
+.cleaning-alert .alert-card>button{align-self:center;min-width:220px;min-height:66px;margin-top:8px;font-size:clamp(24px,1.5vw,30px)}
+@media(max-width:1050px){.cleaning-alert .duty-alert-board{grid-template-columns:repeat(3,minmax(0,1fr))}.cleaning-alert .duty-alert-card{min-height:120px}}
+@media(max-width:600px){.cleaning-alert .alert-card{padding:16px 12px}.cleaning-alert .alert-time-cell span,.cleaning-alert .alert-time-cell small{font-size:24px}.cleaning-alert .alert-time-cell time,.cleaning-alert .alert-time-cell strong{font-size:42px}.cleaning-alert .alert-card h2{font-size:52px}.cleaning-alert .duty-alert-board{grid-template-columns:1fr 1fr}.cleaning-alert .duty-alert-card>strong{font-size:34px}.cleaning-alert .duty-alert-card span{font-size:28px}}
+
+/* Enlarged student popups use the full viewport without a vertical offset. */
+.alert-layer,.draw-layer,.student-timer-layer{inset:0;padding:12px}
+.alert-card{width:100%;max-width:none;height:100%;max-height:none;padding:clamp(30px,4vw,64px);border-radius:24px;overflow:auto}
+.alert-top span{font-size:clamp(19px,1.6vw,27px)}
+.alert-top time{font-size:clamp(48px,5vw,78px)}
+.alert-time-board{width:min(1280px,100%);align-self:center}
+.alert-time-cell{min-height:130px}
+.alert-time-cell span,.alert-time-cell small{font-size:clamp(18px,1.5vw,26px)}
+.alert-time-cell time,.alert-time-cell strong{font-size:clamp(48px,5vw,76px)}
+.alert-card>p{font-size:clamp(25px,2.2vw,38px)}
+.alert-card h2{font-size:clamp(64px,8vw,128px)}
+.alert-messages{width:min(1500px,100%)}
+.alert-message{font-size:clamp(25px,2.3vw,40px)}
+.alert-card button{min-height:68px;padding:12px 26px;font-size:clamp(20px,1.7vw,30px)}
+.cleaning-alert .alert-card{width:100%;height:100%;min-height:100%;max-height:none;border-radius:0}
+.student-timer-card{width:100%;max-width:none;height:100%;min-height:100%;border-radius:24px;overflow:auto}
+.draw-card{width:min(1200px,100%);min-height:min(620px,100%);padding:clamp(55px,7vw,110px) 35px}
+.draw-card small,.draw-card span{font-size:clamp(28px,3vw,48px)}
+.draw-card strong{font-size:clamp(100px,14vw,220px)}
+@media(max-width:600px){.alert-layer,.draw-layer,.student-timer-layer{padding:7px}.alert-card,.student-timer-card{border-radius:16px}}

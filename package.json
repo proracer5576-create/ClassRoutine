@@ -1,0 +1,71 @@
+{
+  "name": "class-routine",
+  "version": "1.0.0",
+  "description": "교실 일과, 알림, 시간표, 명렬표와 1인 1역을 로컬에서 관리하는 교사용 프로그램",
+  "main": "electron-main.cjs",
+  "author": "ClassRoutine",
+  "license": "MIT",
+  "scripts": {
+    "prepare-icon": "node scripts/generate-icon.mjs",
+    "start": "npm run prepare-icon && electron .",
+    "test": "node --test tests/*.test.mjs",
+    "dist": "npm run prepare-icon && electron-builder --win nsis portable --x64",
+    "dist:installer": "npm run prepare-icon && electron-builder --win nsis --x64",
+    "dist:portable": "npm run prepare-icon && electron-builder --win portable --x64"
+  },
+  "devDependencies": {
+    "electron": "44.1.1",
+    "electron-builder": "26.15.3"
+  },
+  "build": {
+    "appId": "kr.classroutine.today",
+    "productName": "오늘도 차근차근",
+    "asar": true,
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "*.html",
+      "*.css",
+      "*.js",
+      "*.mjs",
+      "*.cjs",
+      "build/icon.png",
+      "명렬표_양식.csv",
+      "주간시간표_빈파일.csv",
+      "1인1역_배정_빈파일.csv",
+      "루틴기록_빈파일.csv",
+      "!tests/**",
+      "!release/**",
+      "!data/**",
+      "!dev-server.mjs",
+      "!학생명렬표.csv",
+      "!주간시간표_이력.csv",
+      "!1인1역_배정.csv",
+      "!루틴기록.csv",
+      "!교실루틴_설정*.json",
+      "!데스크톱설정.json"
+    ],
+    "win": {
+      "icon": "build/icon.png",
+      "target": [
+        { "target": "nsis", "arch": ["x64"] },
+        { "target": "portable", "arch": ["x64"] }
+      ]
+    },
+    "nsis": {
+      "artifactName": "오늘도차근차근-${version}-${arch}-설치본.${ext}",
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "오늘도 차근차근",
+      "deleteAppDataOnUninstall": false
+    },
+    "portable": {
+      "artifactName": "오늘도차근차근-${version}-${arch}-portable.${ext}"
+    }
+  }
+}

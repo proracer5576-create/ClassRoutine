@@ -6,6 +6,7 @@
   <meta name="theme-color" content="#173c36">
   <title>우리 반 일과 · 학생 화면</title>
   <link rel="stylesheet" href="student.css">
+  <link rel="stylesheet" href="cute-theme.css">
 </head>
 <body>
   <header class="board-header">
@@ -15,6 +16,7 @@
     </div>
     <div class="date-box"><span id="dateText"></span><b id="clock">00:00</b><small id="seconds">00</small></div>
     <nav aria-label="화면 도구">
+      <div class="student-timer" id="studentTimer" hidden aria-live="polite"><span>타이머</span><b id="studentTimerDisplay">00:00</b></div>
       <button id="soundButton" class="tool-button" type="button" aria-pressed="true">소리 켜짐</button>
       <button id="fullButton" class="tool-button" type="button">전체 화면</button>
       <a class="tool-button teacher-link" href="guide.html">설명서</a>
@@ -54,9 +56,12 @@
     </section>
   </main>
 
+  <section class="student-timer-layer" id="studentTimerLayer" hidden role="dialog" aria-label="빠른 타이머"><div class="student-timer-card"><p>QUICK TIMER</p><span id="studentTimerDuration">5분 타이머</span><h2 id="studentTimerStatus">남은 시간</h2><strong id="studentTimerLarge">05:00</strong><div class="student-timer-progress"><i id="studentTimerProgress"></i></div><small id="studentTimerEnd">종료 예정 시각 계산 중</small><button id="studentTimerMinimize" type="button">작게 보기</button></div></section>
+
   <section class="alert-layer" id="alertLayer" hidden aria-live="assertive" aria-modal="true" role="dialog">
     <div class="alert-card">
-      <div class="alert-top"><span id="alertBadge">2분 전 알림</span><time id="alertTime">09:00</time></div>
+      <div class="alert-top"><span id="alertBadge">2분 전 알림</span></div>
+      <div class="alert-time-board" aria-label="현재 시각과 일정 시작 시각"><div class="alert-time-cell current"><span>현재 시각</span><time id="alertCurrentTime">--:--:--</time></div><div class="alert-time-cell start"><span>일정 시작</span><time id="alertTime">09:00</time><small id="alertEndTime"></small></div><div class="alert-time-cell remaining"><span id="alertCountdownLabel">시작까지</span><strong id="alertCountdown">--:--</strong></div></div>
       <p id="alertSubject">다음 수업</p>
       <h2 id="alertTitle">준비할 시간이에요</h2>
       <div class="alert-messages" id="alertMessages"></div>

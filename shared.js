@@ -10,8 +10,60 @@
     memos: "classRoutine.memos.v2",
     roster: "classRoutine.roster.v1",
     weeklyTimetables: "classRoutine.weeklyTimetables.v1",
-    duties: "classRoutine.duties.v1"
+    duties: "classRoutine.duties.v1",
+    quickTimer: "classRoutine.quickTimer.v1"
   };
+  const STATE_META_KEY = "classRoutine.stateBackupAt.v1";
+  const PERSISTED_KEYS = new Set([
+    KEYS.routines, KEYS.records, KEYS.settings, KEYS.subjects, KEYS.handoffs,
+    KEYS.memos, KEYS.roster, KEYS.weeklyTimetables, KEYS.duties
+  ]);
+  let stateBackupTimer = null;
+
+  function applyStateSnapshot(snapshot, force = false) {
+    if (!snapshot?.storage || typeof snapshot.storage !== "object") return { applied: false, keys: [], savedAt: "" };
+    const localHasData = [...PERSISTED_KEYS].some(key => localStorage.getItem(key) !== null);
+    const localSavedAt = localStorage.getItem(STATE_META_KEY) || "";
+    if (!force && localHasData && (!snapshot.savedAt || (localSavedAt && String(snapshot.savedAt) <= localSavedAt))) return { applied: false, keys: [], savedAt: String(snapshot.savedAt || "") };
+    const keys = [];
+    for (const [key, value] of Object.entries(snapshot.storage)) {
+      if (PERSISTED_KEYS.has(key)) { localStorage.setItem(key, JSON.stringify(value)); keys.push(key); }
+    }
+    localStorage.setItem(STATE_META_KEY, String(snapshot.savedAt || new Date().toISOString()));
+    return { applied: true, keys, savedAt: String(snapshot.savedAt || "") };
+  }
+
+  function applyFolderState() { return applyStateSnapshot(window.__CLASS_ROUTINE_BOOTSTRAP__).applied; }
+
+  async function restoreFolderState(force = false) {
+    if (!window.location || !/^https?:$/.test(window.location.protocol)) return { ok: false, reason: "server-unavailable" };
+    try {
+      const response = await fetch("/api/state-json", { cache: "no-store" });
+      if (!response.ok) return { ok: false, reason: "read-failed" };
+      const result = applyStateSnapshot(await response.json(), force);
+      if (result.applied) notify("folderState");
+      return { ok: true, ...result };
+    } catch {
+      return { ok: false, reason: "read-failed" };
+    }
+  }
+
+  function scheduleStateBackup() {
+    if (!window.location || !/^https?:$/.test(window.location.protocol)) return;
+    clearTimeout(stateBackupTimer);
+    stateBackupTimer = setTimeout(async () => {
+      const storage = {};
+      for (const key of PERSISTED_KEYS) {
+        try { const raw = localStorage.getItem(key); if (raw !== null) storage[key] = JSON.parse(raw); }
+        catch {}
+      }
+      const savedAt = new Date().toISOString();
+      try {
+        const response = await fetch("/api/state-json", { method: "PUT", headers: { "Content-Type": "application/json; charset=utf-8" }, body: JSON.stringify({ version: 1, savedAt, storage }) });
+        if (response.ok) localStorage.setItem(STATE_META_KEY, savedAt);
+      } catch {}
+    }, 300);
+  }
 
   const SCHOOL_PRESETS = {
     elementary: { label: "초등학교", classMinutes: 40, breakMinutes: 10 },
@@ -47,16 +99,19 @@
     lunch: { enabled: true, afterPeriod: 4, duration: 50 }
   };
 
+  applyFolderState();
   const clone = value => JSON.parse(JSON.stringify(value));
   const load = (key, fallback) => {
     try { return JSON.parse(localStorage.getItem(key)) ?? clone(fallback); }
     catch { return clone(fallback); }
   };
-  const save = (key, value) => localStorage.setItem(key, JSON.stringify(value));
+  const save = (key, value) => { localStorage.setItem(key, JSON.stringify(value)); if (PERSISTED_KEYS.has(key)) scheduleStateBackup(); };
   const uid = () => crypto.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
   const dateKey = (date = new Date()) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
   const toMinutes = time => { const [h, m] = String(time || "00:00").split(":").map(Number); return h * 60 + m; };
   const fromMinutes = minutes => `${String(Math.floor((minutes % 1440) / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
+  const quickTimerRemaining = (timer, now = Date.now()) => timer?.endsAt ? Math.max(0, Math.ceil((Number(timer.endsAt) - Number(now)) / 1000)) : 0;
+  const formatCountdown = seconds => { const safe = Math.max(0, Math.floor(Number(seconds) || 0)); return `${String(Math.floor(safe / 60)).padStart(2, "0")}:${String(safe % 60).padStart(2, "0")}`; };
   const addDays = (key, amount) => { const d = new Date(`${key}T12:00:00`); d.setDate(d.getDate() + amount); return dateKey(d); };
   const weekStartKey = (value = new Date()) => {
     const date = typeof value === "string" ? new Date(`${value}T12:00:00`) : new Date(value);
@@ -141,6 +196,7 @@
       save(KEYS.weeklyTimetables, weeks);
     }
     ensureWeekRoutines();
+    ensureMorningRoutines();
     ensureCleaningRoutine();
     ensureDismissalRoutine();
   }
@@ -170,6 +226,17 @@
         const [number, name] = String(key).split("\u241f"); return name ? { number, name } : null;
       })
     })).sort((a, b) => (rank.get(a.id) ?? 1000 + a._index) - (rank.get(b.id) ?? 1000 + b._index)).map(({ _index, ...role }) => role);
+  }
+  function dutyAssignmentsForDate(value = new Date(), board = getDutyBoard()) {
+    const date = value instanceof Date ? value : new Date(value), weekday = date.getDay();
+    const idDays = { mon:1, tue:2, wed:3, thu:4, fri:5 }, nameDays = { 월:1, 화:2, 수:3, 목:4, 금:5 };
+    return dutyAssignments(board).filter(role => {
+      if (!String(role.name || "").includes("크린토피아")) return true;
+      const idMatch = String(role.id || "").match(/^clean-(mon|tue|wed|thu|fri)$/i);
+      const nameMatch = String(role.name || "").match(/(?:^|[·\s])(월|화|수|목|금)(?:요일)?\s*$/);
+      const roleWeekday = idMatch ? idDays[idMatch[1].toLowerCase()] : nameMatch ? nameDays[nameMatch[1]] : null;
+      return roleWeekday === null || roleWeekday === weekday;
+    });
   }
   function durationFor(routine, settings = getSettings()) {
     if (routine.durationMode === "custom") return Number(routine.duration) || 1;
@@ -211,7 +278,7 @@
   let activeSoundOutput = null;
   let activeSoundTimer = null;
   const SOUND_LENGTH_MULTIPLIER = 3;
-  const SOUND_REPEAT_COUNT = 5;
+  const SOUND_REPEAT_COUNT = 3;
   const SOUND_PATTERNS = {
     chime: { wave: "sine", notes: [[523, 0], [659, .16], [784, .34]], level: .22, release: .7 },
     wood: { wave: "triangle", notes: [[240, 0], [180, .18]], level: .3, release: .22 },
@@ -361,6 +428,37 @@
     const next = [...routines.filter(item => !item.generated || (item.weekStart && item.weekStart !== weekStart) || (!item.weekStart && weekStart !== currentWeek)), ...generated];
     save(KEYS.routines, next.map(item => normalizeRoutine(item)));
     return true;
+  }
+
+  function ensureMorningRoutines() {
+    const routines = getRoutines(), settings = getSettings();
+    const definitions = [
+      {
+        id: "builtin-morning-0840", startTime: "08:40", type: "other", category: "아침활동", title: "아침활동",
+        durationMode: "custom", duration: 15, preAlertMode: "default", preAlertMinutes: settings.defaultPreAlert,
+        eventMessage: "🥛 우유 마시기를 꼭 확인해요! 독서·레서·마타수학 중 오늘 활동을 하고, 오늘 시간표도 확인해요.",
+        sound: "chime", color: "yellow", activeDays: [1, 2, 3, 4, 5], enabled: true, generated: false
+      },
+      {
+        id: "builtin-morning-break-0855", startTime: "08:55", type: "break", category: "쉬는 시간", title: "아침 쉬는 시간",
+        durationMode: "custom", duration: 5, preAlertMode: "default", preAlertMinutes: settings.defaultPreAlert,
+        eventMessage: "1교시를 시작하기 전에 자리를 정돈하고 수업 준비를 마쳐요.",
+        sound: "chime", color: "green", activeDays: [1, 2, 3, 4, 5], enabled: true, generated: false
+      }
+    ];
+    let changed = false;
+    definitions.forEach(definition => {
+      const index = routines.findIndex(item => item.id === definition.id);
+      if (index >= 0) {
+        const current = routines[index], next = normalizeRoutine({ ...current, ...definition, eventMessage: current.eventMessage || definition.eventMessage }, settings);
+        if (JSON.stringify(current) !== JSON.stringify(next)) { routines[index] = next; changed = true; }
+        return;
+      }
+      const duplicate = routines.some(item => item.startTime === definition.startTime && `${item.category} ${item.title}`.includes(definition.category));
+      if (!duplicate) { routines.push(normalizeRoutine(definition, settings)); changed = true; }
+    });
+    if (changed) save(KEYS.routines, routines);
+    return changed;
   }
 
   function ensureCleaningRoutine() {
@@ -531,12 +629,13 @@
 
   migrate();
   window.ClassRoutine = {
-    KEYS, SCHOOL_PRESETS, DEFAULT_SETTINGS, SUBJECT_COLORS, uid, dateKey, weekStartKey, weekInfo, toMinutes, fromMinutes,
+    KEYS, SCHOOL_PRESETS, DEFAULT_SETTINGS, SUBJECT_COLORS, uid, dateKey, weekStartKey, weekInfo, toMinutes, fromMinutes, quickTimerRemaining, formatCountdown,
     getSettings, setSettings, getSubjects, setSubjects, getRoutines, setRoutines, getRecords, setRecords,
-    getHandoffs, setHandoffs, getWeeklyTimetables, setWeeklyTimetables, getDutyBoard, setDutyBoard, dutyAssignments, dutyBoardFromCsv,
+    getHandoffs, setHandoffs, getWeeklyTimetables, setWeeklyTimetables, getDutyBoard, setDutyBoard, dutyAssignments, dutyAssignmentsForDate, dutyBoardFromCsv,
     durationFor, preAlertFor, endTime, hasEnded, activeOn, primaryCurrentRoutine, subjectFor, commonMessageFor, messagesFor, isCleaningRoutine, isDismissalRoutine, activateSound, soundTiming, stopSound, effectiveSound, playSound,
-    nextClassAfter, generateSchedule, materializeWeek, ensureWeekRoutines, ensureCleaningRoutine, ensureDismissalRoutine, weeklyTimetablesFromCsv, weeklyTimetablesCsv, normalizeRoutine, notify, onChange, load, save
+    nextClassAfter, generateSchedule, materializeWeek, ensureWeekRoutines, ensureMorningRoutines, ensureCleaningRoutine, ensureDismissalRoutine, weeklyTimetablesFromCsv, weeklyTimetablesCsv, normalizeRoutine, restoreFolderState, notify, onChange, load, save
   };
   syncFolderTimetables();
   syncFolderDuties();
+  scheduleStateBackup();
 })();

@@ -110,6 +110,71 @@ function renderRoutines() {
 function soundLabel(value) { return ({ chime: "맑은 종", wood: "나무 블록", sparkle: "반짝임", none: "소리 없음" })[value] || value; }
 function escapeHtml(value) { return String(value ?? "").replace(/[&<>'"]/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" })[char]); }
 
+function formatDataBytes(bytes) {
+  const value = Number(bytes) || 0;
+  if (value < 1024) return `${value} B`;
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(value < 10240 ? 1 : 0)} KB`;
+  return `${(value / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function formatDataTime(value) {
+  if (!value) return "저장 시각 없음";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "저장 시각 확인 필요";
+  return new Intl.DateTimeFormat("ko-KR", { month: "long", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(date);
+}
+
+function renderDataCounts() {
+  const currentRecords = CR.getRecords(), today = CR.dateKey(), dutyBoard = CR.getDutyBoard();
+  $("#dataRoutineCount").textContent = CR.getRoutines().length;
+  $("#dataRecordCount").textContent = currentRecords.length;
+  $("#dataTodayRecords").textContent = currentRecords.filter(item => item.date === today && item.status === "완료").length;
+  $("#dataWeekCount").textContent = Object.keys(CR.getWeeklyTimetables()).length;
+  $("#dataRosterCount").textContent = CR.load(CR.KEYS.roster, []).length;
+  $("#dataDutyCount").textContent = (dutyBoard.roles || []).length;
+}
+
+async function refreshDataCenter({ announce = false } = {}) {
+  renderDataCounts();
+  const badge = $("#dataConnectionBadge");
+  badge.className = "data-connection-badge checking";
+  badge.innerHTML = "<i></i> 확인 중";
+  try {
+    const response = await fetch("/api/storage-info", { cache: "no-store" });
+    if (!response.ok) throw new Error("storage unavailable");
+    const info = await response.json();
+    $("#dataDirectoryPath").textContent = info.dataDirectory;
+    $("#dataConnectionMode").textContent = window.classRoutineDesktop?.isDesktop ? "Windows 설치 앱 · 자동 연결" : "웹 개발 서버 · 자동 연결";
+    $("#openDataFolder").textContent = window.classRoutineDesktop?.isDesktop ? "데이터 폴더 열기" : "폴더 경로 복사";
+    $("#openDataFolder").disabled = false;
+    badge.className = "data-connection-badge connected";
+    badge.innerHTML = "<i></i> 자동 연결됨";
+    const modified = [];
+    $$("[data-storage-file]").forEach(card => {
+      const state = info.status?.[card.dataset.storageFile];
+      card.classList.toggle("available", Boolean(state?.exists));
+      card.classList.toggle("missing", !state?.exists);
+      card.querySelector(":scope > span").textContent = state?.exists ? `저장됨 · ${formatDataBytes(state.bytes)}` : "아직 생성되지 않음";
+      if (state?.modifiedAt) modified.push(state.modifiedAt);
+    });
+    const latest = modified.sort().at(-1);
+    $("#dataLastSaved").textContent = latest ? `최근 저장 · ${formatDataTime(latest)}` : "저장된 파일이 아직 없습니다.";
+    if (announce) toast("문서 데이터 폴더 상태를 다시 확인했어요.");
+    return info;
+  } catch {
+    badge.className = "data-connection-badge disconnected";
+    badge.innerHTML = "<i></i> 연결 확인 필요";
+    $("#dataConnectionMode").textContent = "직접 HTML 실행 또는 서버 연결 안 됨";
+    $("#dataDirectoryPath").textContent = "설치 앱이나 개발 서버로 열면 자동 연결됩니다.";
+    $("#openDataFolder").textContent = "데이터 폴더 열기";
+    $("#openDataFolder").disabled = true;
+    $$("[data-storage-file]").forEach(card => { card.classList.add("missing"); card.querySelector(":scope > span").textContent = "연결 후 확인"; });
+    $("#dataLastSaved").textContent = "저장 서버에 연결되지 않았습니다.";
+    if (announce) toast("데이터 폴더 연결을 확인해 주세요.");
+    return null;
+  }
+}
+
 function timetableFromRoutines() {
   const table = {};
   settings.activeDays.forEach(day => { table[day] = {}; });
@@ -487,7 +552,7 @@ async function writeTimetableCsv() {
     const response = await fetch("/api/timetable-csv", { method: "PUT", headers: { "Content-Type": "text/csv; charset=utf-8" }, body: timetableCsvText() });
     if (response.ok) {
       timetableFolderStorage = true;
-      $("#timetableCsvStatus").textContent = "ClassRoutine\\주간시간표_이력.csv · 폴더에 자동 보관 중";
+      $("#timetableCsvStatus").textContent = "문서\\오늘도 차근차근\\주간시간표_이력.csv · 자동 보관 중";
       $("#timetableCsvStatus").className = "timetable-csv-status connected";
       return true;
     }
@@ -514,7 +579,7 @@ async function restoreFolderTimetableCsv() {
   } catch { return false; }
 }
 async function connectTimetableCsv() {
-  if (await restoreFolderTimetableCsv()) { toast("프로그램 폴더의 시간표 CSV와 동기화했어요."); return; }
+  if (await restoreFolderTimetableCsv()) { toast("공용 데이터 폴더의 시간표 CSV와 동기화했어요."); return; }
   if (!window.showSaveFilePicker) return downloadTimetableCsv();
   try {
     let handle = await getTimetableHandle();
@@ -627,12 +692,39 @@ $$('[data-test-sound]').forEach(button => button.addEventListener("click", () =>
   clearTimeout(soundTestTimer);
   soundTestTimer = setTimeout(() => button.classList.remove("playing"), timing.totalSeconds * 1000);
   $("#soundTestStatus").textContent = played
-    ? `${button.querySelector("b").textContent} 선택 · 저장 대기 · ${$("#soundVolume").value}% · 5회 반복 중 (약 ${Math.ceil(timing.totalSeconds)}초)`
+    ? `${button.querySelector("b").textContent} 선택 · 저장 대기 · ${$("#soundVolume").value}% · 3회 반복 중 (약 ${Math.ceil(timing.totalSeconds)}초)`
     : "브라우저의 소리 권한과 스피커 연결을 확인해 주세요.";
 }));
 $("#saveAlertSettings").addEventListener("click", () => { settings = { ...collectBaseSettings(), sound: $("#soundSetting").checked, globalSound: $("#globalSound").value, soundVolume: Number($("#soundVolume").value), reducedMotion: $("#motionSetting").checked, alertDisplaySeconds: Number($("#alertSeconds").value) }; CR.setSettings(settings); selectGlobalSound(settings.globalSound, { saved: true }); document.documentElement.classList.toggle("reduce-motion", settings.reducedMotion); toast(`${soundLabel(settings.globalSound)}을 모든 일정의 알림음으로 저장했어요.`); });
-$("#exportBackup").addEventListener("click", () => { const backup = { version: 1, exportedAt: new Date().toISOString(), settings: CR.getSettings(), subjects: CR.getSubjects(), routines: CR.getRoutines(), records: CR.getRecords(), handoffs: CR.getHandoffs() }; const link = document.createElement("a"); link.href = URL.createObjectURL(new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" })); link.download = `교실루틴_전체백업_${CR.dateKey()}.json`; link.click(); URL.revokeObjectURL(link.href); toast("전체 설정 백업을 저장했어요."); });
-$("#importBackup").addEventListener("change", async event => { const file = event.target.files[0]; if (!file) return; try { const data = JSON.parse(await file.text()); if (!data.settings || !Array.isArray(data.routines)) throw new Error(); if (!confirm("현재 설정과 일정을 백업 파일 내용으로 바꿀까요?")) return; CR.setSettings(data.settings); CR.setSubjects(data.subjects || subjects); CR.setRoutines(data.routines); if (Array.isArray(data.records)) CR.setRecords(data.records); if (Array.isArray(data.handoffs)) CR.setHandoffs(data.handoffs); settings = CR.getSettings(); subjects = CR.getSubjects(); routines = CR.getRoutines(); timetable = initialTimetable(); fillBaseSettings(); renderSubjects(); renderRoutines(); renderTimetable(); toast("백업을 복원했어요."); } catch { toast("올바른 교실 루틴 백업 파일이 아닙니다."); } event.target.value = ""; });
+$("#exportBackup").addEventListener("click", () => { const backup = { version: 2, exportedAt: new Date().toISOString(), settings: CR.getSettings(), subjects: CR.getSubjects(), routines: CR.getRoutines(), records: CR.getRecords(), handoffs: CR.getHandoffs(), memos: CR.load(CR.KEYS.memos, {}), roster: CR.load(CR.KEYS.roster, []), weeklyTimetables: CR.getWeeklyTimetables(), duties: CR.getDutyBoard() }; const link = document.createElement("a"); link.href = URL.createObjectURL(new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" })); link.download = `교실루틴_전체백업_${CR.dateKey()}.json`; link.click(); URL.revokeObjectURL(link.href); toast("시간표·명렬표·1인 1역을 포함한 전체 백업을 저장했어요."); });
+$("#importBackup").addEventListener("change", async event => { const file = event.target.files[0]; if (!file) return; try { const data = JSON.parse(await file.text()); if (!data.settings || !Array.isArray(data.routines)) throw new Error(); if (!confirm("현재 설정·일정·시간표와 저장 데이터를 백업 파일 내용으로 바꿀까요?")) return; CR.setSettings(data.settings); CR.setSubjects(data.subjects || subjects); CR.setRoutines(data.routines); if (Array.isArray(data.records)) CR.setRecords(data.records); if (Array.isArray(data.handoffs)) CR.setHandoffs(data.handoffs); if (data.memos && typeof data.memos === "object") CR.save(CR.KEYS.memos, data.memos); if (Array.isArray(data.roster)) CR.save(CR.KEYS.roster, data.roster); if (data.weeklyTimetables && typeof data.weeklyTimetables === "object") CR.setWeeklyTimetables(data.weeklyTimetables); if (data.duties && typeof data.duties === "object") CR.setDutyBoard(data.duties); settings = CR.getSettings(); subjects = CR.getSubjects(); routines = CR.getRoutines(); timetable = initialTimetable(); fillBaseSettings(); renderSubjects(); renderRoutines(); renderTimetable(); toast("전체 백업을 복원했어요."); } catch { toast("올바른 교실 루틴 백업 파일이 아닙니다."); } event.target.value = ""; });
+$("#refreshDataStatus").addEventListener("click", () => refreshDataCenter({ announce: true }));
+$("#openDataFolder").addEventListener("click", async () => {
+  const directory = $("#dataDirectoryPath").textContent;
+  if (window.classRoutineDesktop?.openDataFolder) {
+    const result = await window.classRoutineDesktop.openDataFolder();
+    toast(result?.ok ? "데이터 폴더를 열었어요." : "데이터 폴더를 열지 못했어요.");
+    return;
+  }
+  try { await navigator.clipboard.writeText(directory); toast("데이터 폴더 경로를 복사했어요."); }
+  catch { toast(`데이터 폴더: ${directory}`); }
+});
+$("#restoreFolderState").addEventListener("click", async event => {
+  if (!confirm("문서 폴더의 전체 작업본으로 현재 화면 데이터를 다시 불러올까요?\n문서 폴더 파일 자체는 변경하지 않습니다.")) return;
+  const button = event.currentTarget;
+  button.disabled = true;
+  button.querySelector("span").textContent = "불러오는 중…";
+  const result = await CR.restoreFolderState(true);
+  if (!result.ok || !result.applied) {
+    button.disabled = false;
+    button.querySelector("span").textContent = "문서 폴더 다시 불러오기";
+    toast(result.ok ? "불러올 전체 작업본이 없습니다." : "문서 폴더 작업본을 읽지 못했어요.");
+    return;
+  }
+  toast(`문서 폴더에서 ${result.keys.length}개 데이터 영역을 복원했어요.`);
+  setTimeout(() => location.reload(), 700);
+});
+window.addEventListener("classroutinechange", renderDataCounts);
 $$('[data-close]').forEach(button => button.addEventListener("click", () => $("#" + button.dataset.close).close()));
 
-timetable = initialTimetable(); fillBaseSettings(); renderSubjects(); renderRoutines(); renderWeekIdentity(); renderTimetable(); restoreTimetableCsv(); document.documentElement.classList.toggle("reduce-motion", settings.reducedMotion);
+timetable = initialTimetable(); fillBaseSettings(); renderSubjects(); renderRoutines(); renderWeekIdentity(); renderTimetable(); restoreTimetableCsv(); refreshDataCenter(); document.documentElement.classList.toggle("reduce-motion", settings.reducedMotion);

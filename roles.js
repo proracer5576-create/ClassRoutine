@@ -149,7 +149,7 @@ async function syncRoster() {
     const response = await fetch(API_ROSTER, { cache: "no-store" }), imported = response.ok ? parseRosterRows(parseCsv(await response.text())) : [];
     if (imported.length) { roster = imported; CR.save(CR.KEYS.roster, roster); }
     else if (roster.length) await putCsv(API_ROSTER, rosterCsv());
-    $("#rosterState").textContent = roster.length ? "폴더 CSV와 자동 연결됨" : "명렬표를 연결해 주세요";
+    $("#rosterState").textContent = roster.length ? "공용 데이터 폴더와 자동 연결됨" : "명렬표를 연결해 주세요";
   } catch { $("#rosterState").textContent = roster.length ? "브라우저 저장본 사용 중" : "명렬표를 연결해 주세요"; }
 }
 
@@ -181,7 +181,7 @@ function scheduleFolderSave() {
   clearTimeout(saveTimer);
   saveTimer = setTimeout(async () => {
     const saved = await putCsv(API_BOARD, boardCsv());
-    $("#saveState").textContent = saved ? "폴더 CSV에 자동 저장됨" : "브라우저에 자동 저장됨";
+    $("#saveState").textContent = saved ? "공용 데이터 폴더에 자동 저장됨" : "브라우저에 자동 저장됨";
   }, 350);
 }
 
@@ -241,7 +241,7 @@ async function connectRosterFile() {
     const file = input.files[0]; if (!file) return;
     try {
       const imported = await rosterFromFile(file); if (!imported.length) throw new Error("학생을 찾지 못했습니다.");
-      roster = imported; CR.save(CR.KEYS.roster, roster); CR.notify("roster"); reconcileAssignments(); const shared = await putCsv(API_ROSTER, rosterCsv()); persist(); $("#rosterState").textContent = `${file.name} · ${shared ? "폴더 CSV와 연결됨" : "브라우저에 저장됨"}`; toast(`${roster.length}명의 명렬표를 연결했어요.`);
+      roster = imported; CR.save(CR.KEYS.roster, roster); CR.notify("roster"); reconcileAssignments(); const shared = await putCsv(API_ROSTER, rosterCsv()); persist(); $("#rosterState").textContent = `${file.name} · ${shared ? "공용 데이터 폴더에 저장됨" : "브라우저에 저장됨"}`; toast(`${roster.length}명의 명렬표를 연결했어요.`);
     } catch (error) { toast(error.message || "명렬표를 읽지 못했어요."); }
   };
   input.click();
@@ -278,7 +278,7 @@ $$('[data-close]').forEach(button => button.onclick = () => $("#" + button.datas
 async function init() {
   await syncRoster(); await syncBoard();
   if (reconcileAssignments()) { state.savedAt = new Date().toISOString(); CR.save(STORAGE_KEY, state); scheduleFolderSave(); }
-  renderAll(); $("#saveState").textContent = /^https?:$/.test(location.protocol) ? "폴더 CSV와 동기화됨" : "브라우저에 자동 저장됨";
+  renderAll(); $("#saveState").textContent = /^https?:$/.test(location.protocol) ? "공용 데이터 폴더와 동기화됨" : "브라우저에 자동 저장됨";
 }
 
 init();

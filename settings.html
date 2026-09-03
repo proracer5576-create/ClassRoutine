@@ -8,6 +8,7 @@
   <link rel="stylesheet" href="styles.css">
   <link rel="stylesheet" href="settings.css">
   <link rel="stylesheet" href="timetable.css">
+  <link rel="stylesheet" href="cute-theme.css">
 </head>
 <body class="settings-page">
   <div class="grain" aria-hidden="true"></div>
@@ -20,7 +21,7 @@
     <aside class="settings-nav" aria-label="설정 메뉴">
       <p class="eyebrow">SETTINGS MAP</p>
       <h1>우리 반의<br>하루 설계하기</h1>
-      <nav><a href="#school">01 학급과 학교급</a><a href="#day">02 일과 시간 기준</a><a href="#builder">03 일과 구조</a><a href="#timetable">04 주간 시간표</a><a href="#subjects">05 과목 관리</a><a href="#routines">06 루틴 및 일정</a><a href="#alerts">07 알림과 데이터</a></nav>
+      <nav><a href="#school">01 학급과 학교급</a><a href="#day">02 일과 시간 기준</a><a href="#builder">03 일과 구조</a><a href="#timetable">04 주간 시간표</a><a href="#subjects">05 과목 관리</a><a href="#routines">06 루틴 및 일정</a><a href="#alerts">07 알림과 화면</a><a href="#data">08 데이터 연결</a></nav>
       <div class="settings-note"><span>자동 저장 아님</span><p>상단 영역의 값은 ‘기본 설정 저장’을 눌러야 반영됩니다.</p></div>
     </aside>
 
@@ -79,8 +80,8 @@
           <button id="nextWeek" type="button" aria-label="다음 주">→</button>
           <button class="current-week-button" id="goCurrentWeek" type="button">이번 주로</button>
         </div>
-        <div class="week-history-bar"><div><i></i><span><b id="weekSavedState">아직 저장되지 않은 주</b><small id="weekSavedDetail">적용하면 이 주의 시간표가 별도로 보관됩니다.</small></span></div><div><button class="line-button" id="copyPreviousWeek" type="button">지난주 시간표 가져오기</button><button class="line-button" id="connectTimetableCsv" type="button">폴더 CSV 다시 동기화</button><button class="line-button" id="downloadTimetableCsv" type="button">CSV 사본</button></div></div>
-        <p class="timetable-csv-status" id="timetableCsvStatus" aria-live="polite">프로그램 폴더의 시간표 CSV 연결을 확인하고 있습니다.</p>
+        <div class="week-history-bar"><div><i></i><span><b id="weekSavedState">아직 저장되지 않은 주</b><small id="weekSavedDetail">적용하면 이 주의 시간표가 별도로 보관됩니다.</small></span></div><div><button class="line-button" id="copyPreviousWeek" type="button">지난주 시간표 가져오기</button><button class="line-button" id="connectTimetableCsv" type="button">데이터 폴더 다시 동기화</button><button class="line-button" id="downloadTimetableCsv" type="button">CSV 사본</button></div></div>
+        <p class="timetable-csv-status" id="timetableCsvStatus" aria-live="polite">공용 데이터 폴더의 시간표 CSV를 확인하고 있습니다.</p>
         <div class="timetable-toolbar"><div><b id="timetableSummary">과목 배정 전</b><small>과목 목록은 아래 ‘과목 관리’에서 추가하거나 수정할 수 있습니다.</small></div><div><button class="line-button" id="loadTimetable" type="button">현재 일정에서 불러오기</button><button class="line-button" id="clearTimetable" type="button">모두 비우기</button></div></div>
         <div class="timetable-wrap"><div class="timetable-grid" id="timetableGrid"></div></div>
         <div class="timetable-save-panel">
@@ -104,11 +105,11 @@
       </section>
 
       <section class="settings-section" id="alerts">
-        <header><div><p class="eyebrow">07 · ALERTS & DATA</p><h2>알림과 데이터</h2><p>학생 화면의 표시 방식과 전체 설정 백업을 관리합니다.</p></div><span class="section-number">07</span></header>
+        <header><div><p class="eyebrow">07 · ALERTS & DISPLAY</p><h2>알림과 화면</h2><p>학생 화면의 표시 방식과 모든 일정에 공통으로 적용할 소리를 관리합니다.</p></div><span class="section-number">07</span></header>
         <div class="setting-lines">
           <label class="switch-line"><span><b>효과음 사용</b><small>사전 알림과 일정 시작에 효과음을 재생합니다.</small></span><input id="soundSetting" type="checkbox" role="switch"></label>
           <div class="sound-studio">
-            <div class="sound-studio-head"><span><b>모든 일정의 알림음</b><small>카드를 누르면 이 소리를 선택하고 5회 시험 재생합니다.</small></span><i aria-hidden="true">♪</i></div>
+            <div class="sound-studio-head"><span><b>모든 일정의 알림음</b><small>카드를 누르면 이 소리를 선택하고 3회 시험 재생합니다.</small></span><i aria-hidden="true">♪</i></div>
             <label class="volume-control" for="soundVolume"><span>알림 음량</span><input id="soundVolume" type="range" min="50" max="150" step="10"><output id="soundVolumeValue" for="soundVolume">100%</output></label>
             <input id="globalSound" type="hidden" value="chime">
             <div class="sound-test-grid" aria-label="알림음 시험 버튼">
@@ -119,10 +120,57 @@
             <p id="soundTestStatus" aria-live="polite">기본 알림음은 맑은 종이며 모든 일정에 같이 적용됩니다.</p>
           </div>
           <label class="switch-line"><span><b>움직임 최소화</b><small>알림 화면의 회전과 튀는 움직임을 줄입니다.</small></span><input id="motionSetting" type="checkbox" role="switch"></label>
-          <label class="select-line"><span><b>큰 알림 유지 시간</b><small>이후에는 작은 알림 막대로 축소됩니다.</small></span><select id="alertSeconds"><option value="10">10초</option><option value="15">15초</option><option value="30">30초</option><option value="0">확인할 때까지</option></select></label>
+          <label class="select-line"><span><b>학생 큰 알림 유지 시간</b><small>학생 화면에서 자동으로 닫는 시간입니다. 교사 알림은 확인할 때까지 유지됩니다.</small></span><select id="alertSeconds"><option value="10">10초</option><option value="15">15초</option><option value="30">30초</option><option value="0">확인할 때까지</option></select></label>
         </div>
-        <div class="data-actions"><button class="line-button" id="exportBackup" type="button">전체 설정 백업</button><label class="line-button file-label">백업 불러오기<input id="importBackup" type="file" accept="application/json,.json"></label><a class="line-link" href="index.html#files">CSV·명렬표 연결 확인</a></div>
         <button class="dark-button settings-save" id="saveAlertSettings" type="button">알림 설정 저장</button>
+      </section>
+
+      <section class="settings-section data-center" id="data">
+        <header><div><p class="eyebrow">08 · DATA CONNECTION</p><h2>데이터 연결 센터</h2><p>설치 앱과 웹 버전이 함께 사용하는 문서 폴더의 연결 상태를 한눈에 확인합니다.</p></div><span class="data-connection-badge checking" id="dataConnectionBadge"><i></i> 확인 중</span></header>
+
+        <div class="data-overview">
+          <div class="data-path-card">
+            <span class="data-sticker">LOCAL · PRIVATE</span>
+            <div><small id="dataConnectionMode">실행 환경 확인 중</small><h3>우리 반 데이터 보관함</h3><p>프로그램을 다시 설치해도 이 폴더의 시간표와 기록은 그대로 유지됩니다.</p></div>
+            <code id="dataDirectoryPath">데이터 폴더 확인 중…</code>
+            <div class="data-path-actions"><button class="dark-button" id="openDataFolder" type="button">데이터 폴더 열기</button><button class="line-button" id="refreshDataStatus" type="button">상태 다시 확인</button></div>
+          </div>
+          <aside class="data-today-card">
+            <span>TODAY</span>
+            <strong id="dataTodayRecords">0</strong>
+            <b>오늘의 수동 종료 기록</b>
+            <p>시간이 지나 자동 종료된 일정은 오늘 진행률에는 보이지만 CSV 행에는 추가되지 않습니다.</p>
+          </aside>
+        </div>
+
+        <div class="data-count-grid" aria-label="현재 저장 데이터 개수">
+          <article data-tone="green"><span>루틴</span><strong id="dataRoutineCount">0</strong><small>등록 일정</small></article>
+          <article data-tone="orange"><span>기록</span><strong id="dataRecordCount">0</strong><small>전체 수동 기록</small></article>
+          <article data-tone="blue"><span>주차</span><strong id="dataWeekCount">0</strong><small>저장 시간표</small></article>
+          <article data-tone="yellow"><span>학생</span><strong id="dataRosterCount">0</strong><small>명렬표 인원</small></article>
+          <article data-tone="coral"><span>역할</span><strong id="dataDutyCount">0</strong><small>1인 1역</small></article>
+        </div>
+
+        <div class="data-file-board">
+          <div class="data-file-heading"><div><span>FILES IN USE</span><h3>자동 저장 파일</h3></div><p id="dataLastSaved">최근 저장 시각 확인 중…</p></div>
+          <div class="data-file-list">
+            <article data-storage-file="state"><i>설정</i><div><b>전체 작업본</b><small>교실루틴_설정.json</small></div><span>확인 중</span></article>
+            <article data-storage-file="timetable"><i>시간</i><div><b>주간 시간표</b><small>주간시간표_이력.csv</small></div><span>확인 중</span></article>
+            <article data-storage-file="records"><i>기록</i><div><b>수동 종료 기록</b><small>루틴기록.csv</small></div><span>확인 중</span></article>
+            <article data-storage-file="roster"><i>명렬</i><div><b>학생 명렬표</b><small>학생명렬표.csv</small></div><span>확인 중</span></article>
+            <article data-storage-file="roles"><i>역할</i><div><b>1인 1역 배정</b><small>1인1역_배정.csv</small></div><span>확인 중</span></article>
+          </div>
+        </div>
+
+        <div class="data-recovery-panel">
+          <div><span>RECOVERY DESK</span><h3>기록이 안 보일 때</h3><p>먼저 문서 폴더 작업본을 다시 불러오세요. 과거 기록은 교사 화면의 전체 기록에서 날짜를 선택해야 표시됩니다.</p></div>
+          <div class="data-recovery-actions">
+            <button class="orange-button" id="restoreFolderState" type="button"><span>문서 폴더 다시 불러오기</span><b>↻</b></button>
+            <a class="line-link" href="index.html#files">기록 CSV 연결</a>
+            <button class="line-button" id="exportBackup" type="button">전체 데이터 백업</button>
+            <label class="line-button file-label">백업 파일 복원<input id="importBackup" type="file" accept="application/json,.json"></label>
+          </div>
+        </div>
       </section>
     </div>
   </main>
