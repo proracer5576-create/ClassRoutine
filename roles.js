@@ -69,10 +69,12 @@ function parseRosterRows(rows) {
   const headers = rows[0].map(value => String(value ?? "").replace(/^\uFEFF/, "").replace(/\s/g, "").toLowerCase());
   const nameIndex = headers.findIndex(value => value.includes("이름") || value.includes("성명") || value === "name");
   const numberIndex = headers.findIndex(value => value.includes("번호") || value === "no" || value === "number");
+  const allergenIndex = headers.findIndex(value => value.includes("알레르기") || value.includes("알러지") || value === "allergens");
   const body = nameIndex >= 0 ? rows.slice(1) : rows;
   return body.map((row, index) => ({
     number: String(row[numberIndex >= 0 ? numberIndex : row.length > 1 ? 0 : -1] || index + 1).trim(),
-    name: String(row[nameIndex >= 0 ? nameIndex : row.length > 1 ? 1 : 0] || "").trim()
+    name: String(row[nameIndex >= 0 ? nameIndex : row.length > 1 ? 1 : 0] || "").trim(),
+    allergenCodes: CR.normalizeAllergenCodes(allergenIndex >= 0 ? row[allergenIndex] : "")
   })).filter(item => item.name);
 }
 
@@ -108,7 +110,7 @@ async function parseXlsx(file) {
 
 async function rosterFromFile(file) { return file.name.toLowerCase().endsWith(".xlsx") ? parseXlsx(file) : parseRosterRows(parseCsv(await file.text())); }
 const csvCell = value => `"${String(value ?? "").replaceAll('"', '""')}"`;
-function rosterCsv() { return "\uFEFF" + [["번호", "이름"], ...roster.map(student => [student.number, student.name])].map(row => row.map(csvCell).join(",")).join("\r\n"); }
+function rosterCsv() { return "\uFEFF" + [["번호", "이름", "알레르기번호"], ...roster.map(student => [student.number, student.name, CR.normalizeAllergenCodes(student.allergenCodes).join("|")])].map(row => row.map(csvCell).join(",")).join("\r\n"); }
 
 function boardCsv() {
   const rows = [["저장시각", "배정기간", "역할ID", "역할명", "분류", "업무안내", "색상", "정원", "자리", "학생번호", "학생이름"]];

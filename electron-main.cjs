@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, Menu, nativeImage, Notification, shell, Tray } = require("electron");
+const { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, Notification, shell, Tray } = require("electron");
 const fs = require("node:fs/promises");
 const path = require("node:path");
 
@@ -36,6 +36,16 @@ function trustedLocalUrl(value) {
   } catch {
     return false;
   }
+}
+
+function trustedSender(event) {
+  return Boolean(event?.senderFrame?.url && trustedLocalUrl(event.senderFrame.url));
+}
+
+function backupFileName(value) {
+  const fallback = `교실루틴_전체백업_${new Date().toISOString().slice(0, 10)}.json`;
+  const cleaned = String(value || fallback).replace(/[<>:"/\\|?*\x00-\x1F]/g, "_").slice(0, 120);
+  return cleaned.toLowerCase().endsWith(".json") ? cleaned : `${cleaned}.json`;
 }
 
 async function readDesktopSettings() {
@@ -146,8 +156,14 @@ function showWindowsNotification(payload = {}) {
   const title = String(payload.title || APP_NAME).slice(0, 80);
   const phaseText = payload.phase === "pre" ? "곧 시작해요" : "시작할 시간이에요";
   const body = String(payload.body || `${payload.time || ""} ${phaseText}`).slice(0, 240);
-  const notification = new Notification({ title, body, silent: true, icon: iconPath(), timeoutType: "never" });
-  notification.on("click", () => openRoutine(String(payload.id || "")));
+  const notification = new Notification({ title, body, silent: true, icon: iconPath(), timeoutType: "default" });
+  const closeTimer = setTimeout(() => notification.close(), 60 * 1000);
+  notification.on("click", () => {
+    clearTimeout(closeTimer);
+    notification.close();
+    openRoutine(String(payload.id || ""));
+  });
+  notification.on("close", () => clearTimeout(closeTimer));
   notification.show();
 }
 
@@ -212,12 +228,43 @@ if (gotLock) {
 
     ipcMain.on("desktop:notify-routine", (event, payload) => {
       if (!trustedLocalUrl(event.senderFrame.url)) return;
+      if (payload?.phase !== "start") return;
       showWindowsNotification(payload);
     });
     ipcMain.handle("desktop:open-data-folder", async event => {
-      if (!trustedLocalUrl(event.senderFrame.url)) return { ok: false, error: "untrusted" };
+      if (!trustedSender(event)) return { ok: false, error: "untrusted" };
       const error = await shell.openPath(dataDirectory);
       return { ok: !error, error };
+    });
+    ipcMain.handle("desktop:save-backup", async (event, payload = {}) => {
+      if (!trustedSender(event)) return { ok: false, error: "untrusted" };
+      const content = String(payload.content || "");
+      if (!content || Buffer.byteLength(content, "utf8") > 10 * 1024 * 1024) return { ok: false, error: "invalid-size" };
+      try { JSON.parse(content.replace(/^\uFEFF/, "")); }
+      catch { return { ok: false, error: "invalid-json" }; }
+      const owner = BrowserWindow.fromWebContents(event.sender) || mainWindow;
+      const result = await dialog.showSaveDialog(owner, {
+        title: "교실 루틴 전체 백업 저장",
+        defaultPath: path.join(dataDirectory, backupFileName(payload.fileName)),
+        filters: [{ name: "교실 루틴 JSON 백업", extensions: ["json"] }]
+      });
+      if (result.canceled || !result.filePath) return { ok: false, canceled: true };
+      await fs.writeFile(result.filePath, content, "utf8");
+      return { ok: true, filePath: result.filePath };
+    });
+    ipcMain.handle("desktop:open-backup", async event => {
+      if (!trustedSender(event)) return { ok: false, error: "untrusted" };
+      const owner = BrowserWindow.fromWebContents(event.sender) || mainWindow;
+      const result = await dialog.showOpenDialog(owner, {
+        title: "교실 루틴 전체 백업 불러오기",
+        defaultPath: dataDirectory,
+        properties: ["openFile"],
+        filters: [{ name: "교실 루틴 JSON 백업", extensions: ["json"] }]
+      });
+      if (result.canceled || !result.filePaths[0]) return { ok: false, canceled: true };
+      const stat = await fs.stat(result.filePaths[0]);
+      if (!stat.isFile() || stat.size > 10 * 1024 * 1024) return { ok: false, error: "invalid-size" };
+      return { ok: true, filePath: result.filePaths[0], content: await fs.readFile(result.filePaths[0], "utf8") };
     });
     createMainWindow();
     createTray();

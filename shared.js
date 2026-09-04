@@ -14,6 +14,12 @@
     quickTimer: "classRoutine.quickTimer.v1"
   };
   const STATE_META_KEY = "classRoutine.stateBackupAt.v1";
+  const ALLERGENS = Object.freeze({
+    "1":"난류", "2":"우유", "3":"메밀", "4":"땅콩", "5":"대두", "6":"밀",
+    "7":"고등어", "8":"게", "9":"새우", "10":"돼지고기", "11":"복숭아",
+    "12":"토마토", "13":"아황산류", "14":"호두", "15":"닭고기",
+    "16":"쇠고기", "17":"오징어", "18":"조개류", "19":"잣"
+  });
   const PERSISTED_KEYS = new Set([
     KEYS.routines, KEYS.records, KEYS.settings, KEYS.subjects, KEYS.handoffs,
     KEYS.memos, KEYS.roster, KEYS.weeklyTimetables, KEYS.duties
@@ -112,6 +118,15 @@
   const fromMinutes = minutes => `${String(Math.floor((minutes % 1440) / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
   const quickTimerRemaining = (timer, now = Date.now()) => timer?.endsAt ? Math.max(0, Math.ceil((Number(timer.endsAt) - Number(now)) / 1000)) : 0;
   const formatCountdown = seconds => { const safe = Math.max(0, Math.floor(Number(seconds) || 0)); return `${String(Math.floor(safe / 60)).padStart(2, "0")}:${String(safe % 60).padStart(2, "0")}`; };
+  const normalizeAllergenCodes = value => {
+    const values = Array.isArray(value) ? value : String(value || "").split(/[|,./\s]+/);
+    return [...new Set(values.map(item => String(item).replace(/\D/g, "")).filter(code => ALLERGENS[code]))].sort((a, b) => Number(a) - Number(b));
+  };
+  const allergenNames = value => normalizeAllergenCodes(value).map(code => ALLERGENS[code]);
+  const mealWarnings = (meal, students = []) => students.map(student => {
+    const codes = normalizeAllergenCodes(student.allergenCodes), dishes = (meal?.dishes || []).filter(dish => (dish.allergenCodes || []).some(code => codes.includes(code))).map(dish => ({ name:dish.name, matchedCodes:dish.allergenCodes.filter(code => codes.includes(code)), matchedNames:allergenNames(dish.allergenCodes.filter(code => codes.includes(code))) }));
+    return { ...student, allergenCodes:codes, allergenNames:allergenNames(codes), dishes };
+  }).filter(student => student.dishes.length);
   const addDays = (key, amount) => { const d = new Date(`${key}T12:00:00`); d.setDate(d.getDate() + amount); return dateKey(d); };
   const weekStartKey = (value = new Date()) => {
     const date = typeof value === "string" ? new Date(`${value}T12:00:00`) : new Date(value);
@@ -629,7 +644,7 @@
 
   migrate();
   window.ClassRoutine = {
-    KEYS, SCHOOL_PRESETS, DEFAULT_SETTINGS, SUBJECT_COLORS, uid, dateKey, weekStartKey, weekInfo, toMinutes, fromMinutes, quickTimerRemaining, formatCountdown,
+    KEYS, SCHOOL_PRESETS, DEFAULT_SETTINGS, SUBJECT_COLORS, ALLERGENS, uid, dateKey, weekStartKey, weekInfo, toMinutes, fromMinutes, quickTimerRemaining, formatCountdown, normalizeAllergenCodes, allergenNames, mealWarnings,
     getSettings, setSettings, getSubjects, setSubjects, getRoutines, setRoutines, getRecords, setRecords,
     getHandoffs, setHandoffs, getWeeklyTimetables, setWeeklyTimetables, getDutyBoard, setDutyBoard, dutyAssignments, dutyAssignmentsForDate, dutyBoardFromCsv,
     durationFor, preAlertFor, endTime, hasEnded, activeOn, primaryCurrentRoutine, subjectFor, commonMessageFor, messagesFor, isCleaningRoutine, isDismissalRoutine, activateSound, soundTiming, stopSound, effectiveSound, playSound,

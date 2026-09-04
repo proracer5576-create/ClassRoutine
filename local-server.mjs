@@ -3,6 +3,7 @@ import fs from "node:fs";
 import fsp from "node:fs/promises";
 import path from "node:path";
 import { DATA_FILES, prepareDataDirectory } from "./storage-config.mjs";
+import { loadDailyInfo, publicIntegrationSettings, sanitizeIntegrationSettings } from "./daily-info.mjs";
 
 const CSV_STORES = new Map([
   ["/api/timetable-csv", { fileName: DATA_FILES.timetable, maxBytes: 5 * 1024 * 1024 }],
@@ -55,7 +56,20 @@ export async function startClassRoutineServer({
   const prepared = await prepareDataDirectory(root, dataDirectory);
   const storageDirectory = prepared.dataDirectory;
   const stateFilePath = path.join(storageDirectory, DATA_FILES.state);
+  const integrationFilePath = path.join(storageDirectory, DATA_FILES.integrations);
   const clients = new Set();
+
+  async function readIntegrationSettings() {
+    try { return sanitizeIntegrationSettings(JSON.parse(await fsp.readFile(integrationFilePath, "utf8"))); }
+    catch { return sanitizeIntegrationSettings({}); }
+  }
+
+  async function writeIntegrationSettings(value) {
+    const previous = await readIntegrationSettings();
+    const safe = sanitizeIntegrationSettings(value, previous);
+    await fsp.writeFile(integrationFilePath, JSON.stringify(safe, null, 2), "utf8");
+    return safe;
+  }
 
   async function stateBootstrap() {
     try {
@@ -82,6 +96,37 @@ export async function startClassRoutineServer({
 
   const server = http.createServer(async (request, response) => {
     const url = new URL(request.url, `http://${request.headers.host || "127.0.0.1"}`);
+    if (url.pathname === "/api/integration-settings") {
+      if (request.method === "GET") {
+        const settings = await readIntegrationSettings();
+        response.writeHead(200, { "Content-Type":"application/json; charset=utf-8", "Cache-Control":"no-store" });
+        response.end(JSON.stringify(publicIntegrationSettings(settings)));
+        return;
+      }
+      if (request.method === "PUT") {
+        try {
+          const body = await readRequestBody(request, 32 * 1024);
+          const settings = await writeIntegrationSettings(JSON.parse(body.toString("utf8")));
+          response.writeHead(200, { "Content-Type":"application/json; charset=utf-8", "Cache-Control":"no-store" });
+          response.end(JSON.stringify({ ok:true, settings:publicIntegrationSettings(settings), file:DATA_FILES.integrations }));
+        } catch (error) {
+          response.writeHead(error.statusCode || 400, { "Content-Type":"application/json; charset=utf-8" });
+          response.end(JSON.stringify({ ok:false, error:"외부 연동 설정을 저장하지 못했습니다." }));
+        }
+        return;
+      }
+      response.writeHead(405, { Allow:"GET, PUT" }).end("Method Not Allowed");
+      return;
+    }
+
+    if (url.pathname === "/api/daily-info" && request.method === "GET") {
+      const settings = await readIntegrationSettings();
+      const daily = await loadDailyInfo(settings, { force:url.searchParams.get("refresh") === "1" });
+      response.writeHead(200, { "Content-Type":"application/json; charset=utf-8", "Cache-Control":"no-store" });
+      response.end(JSON.stringify(daily));
+      return;
+    }
+
     if (url.pathname === "/api/storage-info" && request.method === "GET") {
       response.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
       response.end(JSON.stringify({ dataDirectory: storageDirectory, files: DATA_FILES, status: await storageStatus() }));

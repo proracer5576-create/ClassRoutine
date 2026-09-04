@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <title><?= appTitle ?></title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Gowun+Dodum&family=Jua&display=swap" rel="stylesheet">
+  <?!= include_('Styles'); ?>
+</head>
+<body>
+  <div class="paper-noise" aria-hidden="true"></div>
+  <header class="app-header">
+    <a class="brand" href="?">
+      <span class="brand-mark">✓</span>
+      <span><b>오늘도, 차근차근</b><small>ONLINE CLASSROOM</small></span>
+    </a>
+    <div class="identity" id="identity" hidden>
+      <span class="role-chip" id="roleChip">확인 중</span>
+      <div><b id="identityName"></b><small id="identityEmail"></small></div>
+    </div>
+  </header>
+
+  <main class="app-shell">
+    <section class="loading-view" id="loadingView">
+      <div class="pencil-loader" aria-hidden="true"><i></i><i></i><i></i></div>
+      <p>학교 Google 계정을 확인하고 있어요.</p>
+    </section>
+
+    <section class="error-view" id="errorView" hidden>
+      <span>!</span><p class="eyebrow">SIGN-IN CHECK</p><h1>교실에 들어오지 못했어요</h1>
+      <p id="errorMessage"></p>
+      <button type="button" id="retryButton">다시 확인하기</button>
+    </section>
+
+    <section class="master-view" id="masterView" hidden>
+      <header class="page-heading">
+        <div><p class="eyebrow">MASTER DESK</p><h1>학교 교실 연결하기</h1><p>담임 이메일과 학급을 연결하면 학생 명렬 관리는 각 담임에게 맡길 수 있어요.</p></div>
+        <div class="domain-note"><small>허용 학교 도메인</small><b id="schoolDomain">-</b></div>
+      </header>
+      <div class="master-layout">
+        <form class="paper-card create-class" id="classForm">
+          <span class="tape" aria-hidden="true"></span>
+          <p class="card-kicker">NEW HOMEROOM</p><h2>학급과 담임 등록</h2>
+          <label>학교 이름<input id="schoolName" required maxlength="80" placeholder="예: 가람초등학교"></label>
+          <label>학급 이름<input id="className" required maxlength="50" placeholder="예: 5학년 2반"></label>
+          <div class="two-fields"><label>담임 이름<input id="teacherName" required maxlength="40" placeholder="김선생"></label><label>담임 이메일<input id="teacherEmail" type="email" required placeholder="teacher@school.kr"></label></div>
+          <button class="primary-button" type="submit">학급 연결하기 <span>→</span></button>
+        </form>
+        <section class="class-board">
+          <div class="section-heading"><div><p class="eyebrow">CONNECTED CLASSES</p><h2>연결된 학급</h2></div><strong id="classCount">0</strong></div>
+          <div class="class-list" id="classList"></div>
+        </section>
+      </div>
+    </section>
+
+    <section class="teacher-view" id="teacherView" hidden>
+      <header class="page-heading teacher-heading">
+        <div><p class="eyebrow">TEACHER LIVE DESK</p><h1><span id="teacherClassName">우리 반</span> 온라인 교실</h1><p>수업 안내를 보내고 학생들의 준비·이해도·도움 요청을 한눈에 확인하세요.</p></div>
+        <div class="teacher-heading-actions"><button class="quiet-button" id="masterReturnButton" type="button" hidden>마스터 화면</button><div class="live-lamp" id="teacherLiveLamp"><i></i><span><small>현재 상태</small><b>활동 대기</b></span></div></div>
+      </header>
+
+      <section class="daily-board" aria-label="오늘 급식과 날씨">
+        <article class="daily-card meal-card"><div class="daily-card-head"><span>식</span><div><p class="eyebrow">TODAY'S LUNCH</p><h2 id="teacherMealTitle">급식 확인 중</h2></div><button data-refresh-daily type="button" aria-label="오늘 정보 새로고침">↻</button></div><div class="dish-list" id="teacherMealMenu"></div><p id="teacherMealNote"></p></article>
+        <article class="daily-card weather-card" id="teacherWeatherCard"><div class="daily-card-head"><span id="teacherWeatherIcon">날</span><div><p class="eyebrow">OUTDOOR CHECK</p><h2 id="teacherOutdoorLabel">날씨 확인 중</h2></div></div><div class="weather-line" id="teacherWeatherValues"></div><p id="teacherOutdoorMessage"></p></article>
+      </section>
+
+      <div class="teacher-grid">
+        <div class="teacher-workbench">
+          <form class="paper-card session-form" id="sessionForm">
+            <span class="tape" aria-hidden="true"></span>
+            <div class="section-heading"><div><p class="card-kicker">BROADCAST</p><h2>학생 화면에 보내기</h2></div><button class="quiet-button" id="closeSessionButton" type="button">현재 활동 종료</button></div>
+            <div class="two-fields"><label>과목<input id="sessionSubject" maxlength="30" placeholder="예: 수학"></label><label>활동 이름<input id="sessionTitle" required maxlength="80" placeholder="예: 분수의 덧셈"></label></div>
+            <label>학생 공개 안내<textarea id="sessionMessage" maxlength="500" rows="3" placeholder="학생에게 보여 줄 준비물과 안내를 적으세요."></textarea></label>
+            <div class="three-fields"><label>학습 링크 이름<input id="resourceLabel" maxlength="50" placeholder="수학 도구 열기"></label><label class="wide-field">학습 링크<input id="resourceUrl" type="url" placeholder="https://..."></label><label>활동 시간<select id="sessionMinutes"><option value="5">5분</option><option value="10">10분</option><option value="20">20분</option><option value="40" selected>40분</option><option value="50">50분</option><option value="0">종료 시각 없음</option></select></label></div>
+            <label>빠른 질문<input id="pollQuestion" maxlength="160" placeholder="예: 오늘 배운 내용 중 답을 골라 보세요."></label>
+            <label>선택지 <small>쉼표로 구분, 최대 6개</small><input id="pollOptions" maxlength="300" placeholder="1번, 2번, 3번, 4번"></label>
+            <button class="primary-button" type="submit">학생 화면에 게시하기 <span>↗</span></button>
+          </form>
+
+          <section class="paper-card service-card">
+            <div class="section-heading"><div><p class="card-kicker">PRIVATE API SETUP</p><h2>급식·날씨 연결</h2></div><span class="service-lock">외부에는 학교코드·격자만 전송</span></div>
+            <form id="serviceForm">
+              <div class="two-fields"><label>교육청 코드<input id="neisOfficeCode" maxlength="10" placeholder="예: B10"></label><label>학교 코드<input id="neisSchoolCode" maxlength="20" placeholder="예: 7010057"></label></div>
+              <div class="two-fields"><label>기상청 격자 X<input id="weatherNx" type="number" min="1" max="300"></label><label>기상청 격자 Y<input id="weatherNy" type="number" min="1" max="300"></label></div>
+              <details><summary>API 인증키 입력</summary><div class="two-fields"><label>나이스 인증키 <small id="neisKeyState">미등록</small><input id="neisApiKey" type="password" autocomplete="off" placeholder="비우면 기존 키 유지"></label><label>기상청 인증키 <small id="kmaKeyState">미등록</small><input id="kmaApiKey" type="password" autocomplete="off" placeholder="비우면 기존 키 유지"></label></div></details>
+              <button class="secondary-button" type="submit">연동 설정 저장</button>
+            </form>
+          </section>
+
+          <section class="paper-card roster-card">
+            <div class="section-heading"><div><p class="card-kicker">STUDENT SSO</p><h2>학생 이메일 명렬</h2></div><strong id="rosterCount">0명</strong></div>
+            <p>한 줄에 <b>이메일, 번호, 이름, 알레르기번호</b> 순서로 입력하세요. 번호는 1~19이며 여러 개는 |로 구분합니다.</p>
+            <textarea id="rosterInput" rows="6" placeholder="student01@school.kr, 1, 김학생, 1|2|6&#10;student02@school.kr, 2, 이학생, "></textarea>
+            <div class="row-actions"><button class="quiet-button" id="fillRosterButton" type="button">현재 명렬 불러오기</button><button class="secondary-button" id="saveRosterButton" type="button">명렬 등록·갱신</button></div>
+          </section>
+        </div>
+
+        <aside class="live-dashboard">
+          <section class="status-card">
+            <p class="eyebrow">LIVE RESPONSE</p><h2 id="liveTitle">게시된 활동이 없어요</h2><p id="liveMessage">왼쪽에서 학생 화면에 보낼 활동을 작성해 주세요.</p>
+            <div class="metric-grid"><article><small>준비 완료</small><strong id="readyCount">0</strong><span id="readyTotal">/ 0</span></article><article><small>출구 응답</small><strong id="exitCount">0</strong><span>명</span></article><article class="help-metric"><small>도움 요청</small><strong id="helpCount">0</strong><span>명</span></article></div>
+          </section>
+          <section class="response-card"><div class="mini-heading"><h3>이해도</h3><span>자동 집계</span></div><div class="bar-list" id="understandingBars"></div></section>
+          <section class="response-card"><div class="mini-heading"><h3>빠른 질문</h3><span>선택 결과</span></div><div class="bar-list" id="pollBars"></div></section>
+          <section class="help-card"><div class="mini-heading"><h3>조용한 도움 요청</h3><span id="helpBadge">0명 대기</span></div><div class="help-list" id="helpList"></div></section>
+        </aside>
+      </div>
+    </section>
+
+    <section class="student-view" id="studentView" hidden>
+      <header class="student-welcome"><div><p class="eyebrow" id="studentClassLabel">MY CLASSROOM</p><h1><span id="studentName">학생</span>, 준비됐나요?</h1></div><div class="server-clock"><small>지금 시각</small><b id="serverClock">--:--</b></div></header>
+      <section class="student-daily-board">
+        <article class="student-daily meal"><span>식</span><div><p class="eyebrow">MY LUNCH CHECK</p><h2 id="studentMealTitle">오늘 급식</h2><div id="studentMealMenu"></div><aside id="studentAllergyWarning"></aside><small id="studentAllergyProfile"></small></div></article>
+        <article class="student-daily weather" id="studentWeatherCard"><span id="studentWeatherIcon">날</span><div><p class="eyebrow">OUTDOOR CHECK</p><h2 id="studentOutdoorLabel">오늘의 날씨</h2><div id="studentWeatherValues"></div><aside id="studentOutdoorMessage"></aside></div></article>
+      </section>
+      <section class="empty-session" id="emptySession"><span>☀</span><h2>새 활동을 기다리고 있어요</h2><p>선생님이 활동을 시작하면 이 화면에 바로 나타납니다.</p></section>
+      <section class="student-session" id="studentSession" hidden>
+        <div class="session-hero">
+          <span class="subject-sticker" id="studentSubject">오늘 활동</span>
+          <p class="eyebrow">NOW IN CLASS</p><h2 id="studentTitle"></h2><p id="studentMessage"></p>
+          <div class="countdown"><small>남은 시간</small><strong id="studentCountdown">--:--</strong></div>
+          <a class="resource-button" id="studentResource" href="#" target="_blank" rel="noopener noreferrer" hidden>학습 도구 열기 <span>↗</span></a>
+        </div>
+        <div class="student-actions">
+          <section class="action-card ready-card"><span>01</span><h3>준비됐어요</h3><p>준비물과 화면을 확인했다면 눌러 주세요.</p><button id="readyButton" type="button">준비 완료 ✓</button></section>
+          <section class="action-card understanding-card"><span>02</span><h3>지금 이해도</h3><p>선생님만 확인할 수 있어요.</p><div class="choice-row" id="understandingChoices"><button data-value="잘 알아요" type="button">😊<b>잘 알아요</b></button><button data-value="조금 어려워요" type="button">🤔<b>조금 어려워요</b></button><button data-value="도움이 필요해요" type="button">🙋<b>도움 필요</b></button></div></section>
+          <section class="action-card poll-card" id="pollCard" hidden><span>03</span><h3 id="studentPollQuestion">빠른 질문</h3><div class="poll-options" id="studentPollOptions"></div></section>
+          <section class="action-card help-action-card"><span>?</span><h3>조용히 도움 요청</h3><p>친구들 화면에는 보이지 않아요.</p><input id="helpMessage" maxlength="160" placeholder="어떤 부분이 어려운가요?">
+            <button id="helpButton" type="button">선생님께 도움 요청</button><button class="cancel-help" id="cancelHelpButton" type="button" hidden>요청 취소</button>
+          </section>
+          <section class="action-card exit-card"><span>04</span><h3>한 줄 마무리</h3><p>오늘 알게 된 점을 짧게 남겨 보세요.</p><textarea id="exitText" maxlength="300" rows="2" placeholder="오늘 새롭게 알게 된 것은..."></textarea><button id="exitButton" type="button">마무리 보내기</button></section>
+        </div>
+      </section>
+    </section>
+  </main>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <?!= include_('Client'); ?>
+</body>
+</html>

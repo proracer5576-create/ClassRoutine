@@ -34,6 +34,15 @@ try {
   assert.equal(path.resolve(info.dataDirectory), path.resolve(dataDirectory));
   assert.equal(info.status.records.exists, false);
 
+  const integrationPut = await fetch(`http://127.0.0.1:${port}/api/integration-settings`, { method:"PUT", headers:{ "Content-Type":"application/json" }, body:JSON.stringify({ neisOfficeCode:"B10", neisSchoolCode:"", weatherNx:"60", weatherNy:"127", neisApiKey:"private-key" }) });
+  assert.equal(integrationPut.status, 200);
+  const integration = await (await fetch(`http://127.0.0.1:${port}/api/integration-settings`)).json();
+  assert.equal(integration.neisOfficeCode, "B10");
+  assert.equal(integration.hasNeisApiKey, true);
+  assert.equal("neisApiKey" in integration, false, "Saved API keys must not be returned to the browser.");
+  assert.equal((await (await fetch(`http://127.0.0.1:${port}/api/daily-info`)).json()).meal.status, "unconfigured");
+  assert.equal(JSON.parse(await fsp.readFile(path.join(dataDirectory, "외부연동설정.json"), "utf8")).neisApiKey, "private-key");
+
   const stores = [
     ["timetable-csv", "주간시간표_이력.csv"], ["roster-csv", "학생명렬표.csv"],
     ["roles-csv", "1인1역_배정.csv"], ["records-csv", "루틴기록.csv"]
@@ -57,7 +66,7 @@ try {
   const html = await (await fetch(`http://127.0.0.1:${port}/`)).text();
   assert.match(html, /__CLASS_ROUTINE_BOOTSTRAP__/);
   assert.ok(!html.includes("<우리 반>"), "Bootstrap JSON must escape user-controlled HTML delimiters.");
-  console.log("server-api: pages, four CSV stores, state backup, and safe bootstrap OK");
+  console.log("server-api: pages, CSV stores, private integrations, state backup, and safe bootstrap OK");
 } finally {
   if (child.exitCode === null) {
     child.kill();

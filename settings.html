@@ -21,7 +21,7 @@
     <aside class="settings-nav" aria-label="설정 메뉴">
       <p class="eyebrow">SETTINGS MAP</p>
       <h1>우리 반의<br>하루 설계하기</h1>
-      <nav><a href="#school">01 학급과 학교급</a><a href="#day">02 일과 시간 기준</a><a href="#builder">03 일과 구조</a><a href="#timetable">04 주간 시간표</a><a href="#subjects">05 과목 관리</a><a href="#routines">06 루틴 및 일정</a><a href="#alerts">07 알림과 화면</a><a href="#data">08 데이터 연결</a></nav>
+      <nav><a href="#school">01 학급과 학교급</a><a href="#day">02 일과 시간 기준</a><a href="#builder">03 일과 구조</a><a href="#timetable">04 주간 시간표</a><a href="#subjects">05 과목 관리</a><a href="#routines">06 루틴 및 일정</a><a href="#alerts">07 알림과 화면</a><a href="#daily">08 급식·날씨</a><a href="#data">09 데이터 연결</a></nav>
       <div class="settings-note"><span>자동 저장 아님</span><p>상단 영역의 값은 ‘기본 설정 저장’을 눌러야 반영됩니다.</p></div>
     </aside>
 
@@ -80,7 +80,7 @@
           <button id="nextWeek" type="button" aria-label="다음 주">→</button>
           <button class="current-week-button" id="goCurrentWeek" type="button">이번 주로</button>
         </div>
-        <div class="week-history-bar"><div><i></i><span><b id="weekSavedState">아직 저장되지 않은 주</b><small id="weekSavedDetail">적용하면 이 주의 시간표가 별도로 보관됩니다.</small></span></div><div><button class="line-button" id="copyPreviousWeek" type="button">지난주 시간표 가져오기</button><button class="line-button" id="connectTimetableCsv" type="button">데이터 폴더 다시 동기화</button><button class="line-button" id="downloadTimetableCsv" type="button">CSV 사본</button></div></div>
+        <div class="week-history-bar"><div><i></i><span><b id="weekSavedState">아직 저장되지 않은 주</b><small id="weekSavedDetail">적용하면 이 주의 시간표가 별도로 보관됩니다.</small></span></div><div><button class="line-button" id="copyPreviousWeek" type="button">지난주 시간표 가져오기</button><button class="line-button" id="connectTimetableCsv" type="button">시간표 CSV 다시 읽기</button><button class="line-button" id="downloadTimetableCsv" type="button">시간표 CSV 내려받기</button></div></div>
         <p class="timetable-csv-status" id="timetableCsvStatus" aria-live="polite">공용 데이터 폴더의 시간표 CSV를 확인하고 있습니다.</p>
         <div class="timetable-toolbar"><div><b id="timetableSummary">과목 배정 전</b><small>과목 목록은 아래 ‘과목 관리’에서 추가하거나 수정할 수 있습니다.</small></div><div><button class="line-button" id="loadTimetable" type="button">현재 일정에서 불러오기</button><button class="line-button" id="clearTimetable" type="button">모두 비우기</button></div></div>
         <div class="timetable-wrap"><div class="timetable-grid" id="timetableGrid"></div></div>
@@ -125,15 +125,41 @@
         <button class="dark-button settings-save" id="saveAlertSettings" type="button">알림 설정 저장</button>
       </section>
 
+      <section class="settings-section daily-settings" id="daily">
+        <header><div><p class="eyebrow">08 · LUNCH &amp; WEATHER</p><h2>급식·날씨와 안전 안내</h2><p>나이스 급식과 기상청 예보를 불러와 오늘의 교실 안내에 사용합니다.</p></div><span class="section-number">08</span></header>
+        <div class="daily-privacy-note"><b>LOCAL MATCHING</b><p>학생 이름과 알레르기 정보는 외부 API로 전송하지 않습니다. 급식 메뉴를 받은 뒤 이 PC 안에서만 대조합니다.</p></div>
+        <div class="integration-grid">
+          <article class="integration-card meal-connect-card">
+            <span class="integration-icon" aria-hidden="true">식</span><div><p class="eyebrow">NEIS MEAL</p><h3>나이스 급식 연결</h3></div>
+            <label>교육청 코드<input id="neisOfficeCode" maxlength="10" placeholder="예: B10"></label>
+            <label>학교 코드<input id="neisSchoolCode" maxlength="20" placeholder="예: 7010057"></label>
+            <label>나이스 API 인증키 <small id="neisKeyState">미등록</small><input id="neisApiKey" type="password" autocomplete="off" placeholder="비워 두면 기존 키 유지"></label>
+          </article>
+          <article class="integration-card weather-connect-card">
+            <span class="integration-icon" aria-hidden="true">날</span><div><p class="eyebrow">KMA FORECAST</p><h3>기상청 동네예보 연결</h3></div>
+            <div class="field-grid two"><label>격자 X<input id="weatherNx" type="number" min="1" max="300" placeholder="예: 60"></label><label>격자 Y<input id="weatherNy" type="number" min="1" max="300" placeholder="예: 127"></label></div>
+            <label>공공데이터포털 인증키 <small id="kmaKeyState">미등록</small><input id="kmaApiKey" type="password" autocomplete="off" placeholder="비워 두면 기존 키 유지"></label>
+          </article>
+        </div>
+        <div class="integration-actions"><button class="dark-button" id="saveIntegrationSettings" type="button">연동 설정 저장</button><button class="line-button" id="testDailyInfo" type="button">오늘 정보 불러오기</button><span id="integrationStatus" aria-live="polite">설정을 확인해 주세요.</span></div>
+        <div class="daily-preview" id="dailyPreview"><div><span>급식</span><p>학교 코드를 저장하면 오늘 메뉴가 표시됩니다.</p></div><div><span>날씨</span><p>기상청 좌표와 인증키를 저장하면 실외활동 참고 안내가 표시됩니다.</p></div></div>
+
+        <div class="allergy-manager">
+          <div class="allergy-heading"><div><p class="eyebrow">PRIVATE STUDENT DATA</p><h3>학생별 알레르기 확인</h3><p>명렬표의 학생을 선택한 뒤 해당 번호를 체크하세요. 같은 내용이 `학생명렬표.csv`에도 저장됩니다.</p></div><label>학생 선택<select id="allergyStudentSelect"><option value="">명렬표를 먼저 연결해 주세요</option></select></label></div>
+          <div class="allergen-options" id="allergenOptions" aria-label="알레르기 항목"></div>
+          <div class="allergy-actions"><p><b>주의</b> 자동 표시는 진단이나 배식 확인을 대신하지 않습니다. 실제 식단표와 제품 표시를 반드시 재확인하세요.</p><button class="orange-button" id="saveStudentAllergens" type="button">학생 정보 저장</button></div>
+        </div>
+      </section>
+
       <section class="settings-section data-center" id="data">
-        <header><div><p class="eyebrow">08 · DATA CONNECTION</p><h2>데이터 연결 센터</h2><p>설치 앱과 웹 버전이 함께 사용하는 문서 폴더의 연결 상태를 한눈에 확인합니다.</p></div><span class="data-connection-badge checking" id="dataConnectionBadge"><i></i> 확인 중</span></header>
+        <header><div><p class="eyebrow">09 · DATA CONNECTION</p><h2>데이터 연결 센터</h2><p>설치 앱과 웹 버전이 함께 사용하는 문서 폴더의 연결 상태를 한눈에 확인합니다.</p></div><span class="data-connection-badge checking" id="dataConnectionBadge"><i></i> 확인 중</span></header>
 
         <div class="data-overview">
           <div class="data-path-card">
             <span class="data-sticker">LOCAL · PRIVATE</span>
             <div><small id="dataConnectionMode">실행 환경 확인 중</small><h3>우리 반 데이터 보관함</h3><p>프로그램을 다시 설치해도 이 폴더의 시간표와 기록은 그대로 유지됩니다.</p></div>
             <code id="dataDirectoryPath">데이터 폴더 확인 중…</code>
-            <div class="data-path-actions"><button class="dark-button" id="openDataFolder" type="button">데이터 폴더 열기</button><button class="line-button" id="refreshDataStatus" type="button">상태 다시 확인</button></div>
+            <div class="data-path-actions"><button class="dark-button" id="openDataFolder" type="button"><span class="button-symbol" aria-hidden="true">▣</span><span>데이터 폴더 열기</span></button><button class="line-button" id="refreshDataStatus" type="button"><span class="button-symbol" aria-hidden="true">↻</span><span>파일 상태 확인</span></button></div>
           </div>
           <aside class="data-today-card">
             <span>TODAY</span>
@@ -154,21 +180,22 @@
         <div class="data-file-board">
           <div class="data-file-heading"><div><span>FILES IN USE</span><h3>자동 저장 파일</h3></div><p id="dataLastSaved">최근 저장 시각 확인 중…</p></div>
           <div class="data-file-list">
-            <article data-storage-file="state"><i>설정</i><div><b>전체 작업본</b><small>교실루틴_설정.json</small></div><span>확인 중</span></article>
-            <article data-storage-file="timetable"><i>시간</i><div><b>주간 시간표</b><small>주간시간표_이력.csv</small></div><span>확인 중</span></article>
-            <article data-storage-file="records"><i>기록</i><div><b>수동 종료 기록</b><small>루틴기록.csv</small></div><span>확인 중</span></article>
-            <article data-storage-file="roster"><i>명렬</i><div><b>학생 명렬표</b><small>학생명렬표.csv</small></div><span>확인 중</span></article>
-            <article data-storage-file="roles"><i>역할</i><div><b>1인 1역 배정</b><small>1인1역_배정.csv</small></div><span>확인 중</span></article>
+            <article data-storage-file="state"><i aria-hidden="true">⚙</i><div><b>전체 작업본</b><small>교실루틴_설정.json</small></div><span>확인 중</span></article>
+            <article data-storage-file="timetable"><i aria-hidden="true">▦</i><div><b>주간 시간표</b><small>주간시간표_이력.csv</small></div><span>확인 중</span></article>
+            <article data-storage-file="records"><i aria-hidden="true">✓</i><div><b>수동 종료 기록</b><small>루틴기록.csv</small></div><span>확인 중</span></article>
+            <article data-storage-file="roster"><i aria-hidden="true">♟</i><div><b>학생 명렬표</b><small>학생명렬표.csv</small></div><span>확인 중</span></article>
+            <article data-storage-file="roles"><i aria-hidden="true">★</i><div><b>1인 1역 배정</b><small>1인1역_배정.csv</small></div><span>확인 중</span></article>
+            <article data-storage-file="integrations"><i aria-hidden="true">☀</i><div><b>급식·날씨 연동</b><small>외부연동설정.json</small></div><span>확인 중</span></article>
           </div>
         </div>
 
         <div class="data-recovery-panel">
           <div><span>RECOVERY DESK</span><h3>기록이 안 보일 때</h3><p>먼저 문서 폴더 작업본을 다시 불러오세요. 과거 기록은 교사 화면의 전체 기록에서 날짜를 선택해야 표시됩니다.</p></div>
           <div class="data-recovery-actions">
-            <button class="orange-button" id="restoreFolderState" type="button"><span>문서 폴더 다시 불러오기</span><b>↻</b></button>
-            <a class="line-link" href="index.html#files">기록 CSV 연결</a>
-            <button class="line-button" id="exportBackup" type="button">전체 데이터 백업</button>
-            <label class="line-button file-label">백업 파일 복원<input id="importBackup" type="file" accept="application/json,.json"></label>
+            <button class="orange-button" id="restoreFolderState" type="button"><b class="button-symbol" aria-hidden="true">↻</b><span>전체 작업본으로 복원</span></button>
+            <a class="line-link" href="index.html#files">기록 CSV 사본 연결</a>
+            <button class="line-button" id="exportBackup" type="button"><span class="button-symbol" aria-hidden="true">↓</span><span>전체 백업 내려받기</span></button>
+            <button class="line-button file-label" id="importBackupButton" type="button"><span class="button-symbol" aria-hidden="true">↑</span><span>백업 JSON 가져오기</span></button><input id="importBackup" type="file" accept="application/json,.json" hidden>
           </div>
         </div>
       </section>

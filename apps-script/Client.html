@@ -1,0 +1,339 @@
+<script>
+(() => {
+  'use strict';
+  const $ = selector => document.querySelector(selector);
+  const $$ = selector => [...document.querySelectorAll(selector)];
+  const views = ['loadingView', 'errorView', 'masterView', 'teacherView', 'studentView'];
+  const roleLabels = { master: '마스터', teacher: '담임교사', student: '학생' };
+  let appData = null;
+  let serverOffset = 0;
+  let pollTimer = null;
+  let toastTimer = null;
+  let editorSessionId = '';
+  let serviceEditorClassId = '';
+
+  function showView(id) {
+    views.forEach(viewId => { $('#' + viewId).hidden = viewId !== id; });
+  }
+
+  function escapeHtml(value) {
+    return String(value == null ? '' : value).replace(/[&<>'"]/g, char => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', "'":'&#39;', '"':'&quot;' })[char]);
+  }
+
+  function toast(message) {
+    const element = $('#toast');
+    element.textContent = message;
+    element.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => element.classList.remove('show'), 2600);
+  }
+
+  function errorText(error) {
+    return String(error && error.message || error || '요청을 처리하지 못했습니다.').replace(/^Exception:\s*/, '');
+  }
+
+  function callServer(method, payload) {
+    return new Promise((resolve, reject) => {
+      const runner = google.script.run.withSuccessHandler(resolve).withFailureHandler(reject);
+      if (payload === undefined) runner[method]();
+      else runner[method](payload);
+    });
+  }
+
+  function setBusy(element, busy, label) {
+    if (!element) return;
+    if (busy) {
+      element.dataset.labelHtml = element.innerHTML;
+      element.textContent = label || '처리 중…';
+      element.disabled = true;
+    } else {
+      element.innerHTML = element.dataset.labelHtml || element.innerHTML;
+      element.disabled = false;
+    }
+  }
+
+  function renderIdentity(actor) {
+    $('#identity').hidden = false;
+    $('#roleChip').textContent = roleLabels[actor.role] || actor.role;
+    $('#identityName').textContent = actor.name || roleLabels[actor.role] || '';
+    $('#identityEmail').textContent = actor.email || '';
+  }
+
+  function applyData(data) {
+    data = Object.assign({}, appData || {}, data || {});
+    data.actor = data.actor || (appData && appData.actor);
+    appData = data;
+    if (data.serverTime) serverOffset = Date.parse(data.serverTime) - Date.now();
+    renderIdentity(data.actor);
+    if (data.view === 'master') renderMaster(data);
+    else if (data.view === 'teacher') renderTeacher(data);
+    else if (data.view === 'student') renderStudent(data);
+    schedulePolling();
+  }
+
+  async function initialize() {
+    clearTimeout(pollTimer);
+    showView('loadingView');
+    try { applyData(await callServer('getBootstrap')); }
+    catch (error) {
+      $('#identity').hidden = true;
+      $('#errorMessage').textContent = errorText(error);
+      showView('errorView');
+    }
+  }
+
+  function renderMaster(data) {
+    showView('masterView');
+    $('#schoolDomain').textContent = data.schoolDomain ? '@' + data.schoolDomain : '도메인 미설정';
+    $('#classCount').textContent = data.classes.length;
+    $('#classList').innerHTML = data.classes.length ? data.classes.map(item => `
+      <article class="class-item">
+        <small>${escapeHtml(item.schoolName || '학교')}</small>
+        <b>${escapeHtml(item.className)}</b>
+        <span>${escapeHtml(item.teacherName)} · ${escapeHtml(item.teacherEmail)}</span>
+        <em>학생 ${Number(item.studentCount) || 0}명 연결</em>
+        <button type="button" data-open-class="${escapeHtml(item.classId)}">교사 화면 열기 →</button>
+      </article>`).join('') : '<div class="empty-card">아직 연결된 학급이 없습니다.<br>왼쪽에서 첫 학급을 등록해 주세요.</div>';
+  }
+
+  function renderTeacher(data) {
+    showView('teacherView');
+    $('#teacherClassName').textContent = `${data.classroom.schoolName || ''} ${data.classroom.className || ''}`.trim();
+    $('#masterReturnButton').hidden = data.actor.role !== 'master';
+    $('#rosterCount').textContent = `${data.roster.length}명`;
+    if (serviceEditorClassId !== data.classId) {
+      serviceEditorClassId = data.classId;
+      const service = data.serviceSettings || {};
+      $('#neisOfficeCode').value = service.neisOfficeCode || '';
+      $('#neisSchoolCode').value = service.neisSchoolCode || '';
+      $('#weatherNx').value = service.weatherNx || '';
+      $('#weatherNy').value = service.weatherNy || '';
+      $('#neisApiKey').value = ''; $('#kmaApiKey').value = '';
+      $('#neisKeyState').textContent = service.hasNeisApiKey ? '저장됨' : '미등록 · 샘플 조회';
+      $('#kmaKeyState').textContent = service.hasKmaApiKey ? '저장됨' : '미등록';
+    }
+    renderDailyInfo(data.dailyInfo, 'teacher');
+    const active = Boolean(data.state);
+    $('#teacherLiveLamp').classList.toggle('active', active);
+    $('#teacherLiveLamp').querySelector('b').textContent = active ? '학생 화면 게시 중' : '활동 대기';
+    $('#closeSessionButton').disabled = !active;
+    if (active && editorSessionId !== data.state.sessionId) {
+      editorSessionId = data.state.sessionId;
+      $('#sessionSubject').value = data.state.subject || '';
+      $('#sessionTitle').value = data.state.title || '';
+      $('#sessionMessage').value = data.state.message || '';
+      $('#resourceLabel').value = data.state.resourceLabel || '';
+      $('#resourceUrl').value = data.state.resourceUrl || '';
+      $('#pollQuestion').value = data.state.pollQuestion || '';
+      $('#pollOptions').value = (data.state.pollOptions || []).join(', ');
+    }
+    $('#liveTitle').textContent = active ? data.state.title : '게시된 활동이 없어요';
+    $('#liveMessage').textContent = active ? (data.state.message || '학생들이 활동 화면을 보고 있어요.') : '왼쪽에서 학생 화면에 보낼 활동을 작성해 주세요.';
+    $('#readyCount').textContent = data.counts.ready || 0;
+    $('#readyTotal').textContent = `/ ${data.roster.length}`;
+    $('#exitCount').textContent = data.counts.exit || 0;
+    $('#helpCount').textContent = data.helpQueue.length;
+    $('#helpBadge').textContent = `${data.helpQueue.length}명 대기`;
+    renderBars($('#understandingBars'), ['잘 알아요', '조금 어려워요', '도움이 필요해요'], data.counts.understanding || {}, data.roster.length);
+    renderBars($('#pollBars'), active ? data.state.pollOptions || [] : [], data.counts.poll || {}, data.roster.length);
+    $('#helpList').innerHTML = data.helpQueue.length ? data.helpQueue.map(item => `
+      <article class="help-item"><div><b>${escapeHtml(item.number ? item.number + '번 ' : '')}${escapeHtml(item.name)}</b><small>${escapeHtml(item.message)}</small></div><button type="button" data-resolve-help="${escapeHtml(item.requestId)}">도움 완료</button></article>
+    `).join('') : '<div class="bar-empty">기다리는 학생이 없어요.</div>';
+  }
+
+  function renderBars(container, labels, counts, total) {
+    if (!labels.length) {
+      container.innerHTML = '<div class="bar-empty">아직 표시할 응답이 없어요.</div>';
+      return;
+    }
+    const maximum = Math.max(1, total || Object.values(counts).reduce((sum, value) => sum + Number(value || 0), 0));
+    container.innerHTML = labels.map(label => {
+      const count = Number(counts[label] || 0);
+      return `<div class="bar-row"><span>${escapeHtml(label)}</span><div class="bar-track"><i style="width:${Math.min(100, count / maximum * 100)}%"></i></div><b>${count}</b></div>`;
+    }).join('');
+  }
+
+  function renderStudent(data) {
+    showView('studentView');
+    $('#studentName').textContent = data.student.name || '학생';
+    $('#studentClassLabel').textContent = `${data.classroom.schoolName || ''} · ${data.classroom.className || ''}`;
+    renderDailyInfo(data.dailyInfo, 'student');
+    const active = Boolean(data.state);
+    $('#emptySession').hidden = active;
+    $('#studentSession').hidden = !active;
+    if (!active) return;
+    const state = data.state;
+    $('#studentSubject').textContent = state.subject || '오늘 활동';
+    $('#studentTitle').textContent = state.title;
+    $('#studentMessage').textContent = state.message || '선생님의 안내를 확인해 주세요.';
+    const resource = $('#studentResource');
+    resource.hidden = !state.resourceUrl;
+    if (state.resourceUrl) { resource.href = state.resourceUrl; resource.firstChild.textContent = `${state.resourceLabel || '학습 도구 열기'} `; }
+    $('#readyButton').classList.toggle('selected', Boolean(data.ownResponses.ready));
+    $('#readyButton').textContent = data.ownResponses.ready ? '준비 확인됨 ✓' : '준비 완료 ✓';
+    $$('#understandingChoices button').forEach(button => button.classList.toggle('selected', data.ownResponses.understanding === button.dataset.value));
+    const hasPoll = Boolean(state.pollQuestion && state.pollOptions && state.pollOptions.length);
+    $('#pollCard').hidden = !hasPoll;
+    if (hasPoll) {
+      $('#studentPollQuestion').textContent = state.pollQuestion;
+      $('#studentPollOptions').innerHTML = state.pollOptions.map(option => `<button type="button" data-poll-value="${escapeHtml(option)}" class="${data.ownResponses.poll === option ? 'selected' : ''}">${escapeHtml(option)}</button>`).join('');
+    }
+    $('#helpButton').hidden = Boolean(data.helpRequest);
+    $('#cancelHelpButton').hidden = !data.helpRequest;
+    $('#helpMessage').disabled = Boolean(data.helpRequest);
+    if (data.helpRequest) $('#helpMessage').value = data.helpRequest.message;
+    if (data.ownResponses.exit && document.activeElement !== $('#exitText')) $('#exitText').value = data.ownResponses.exit;
+    updateCountdown();
+  }
+
+  function renderDailyInfo(daily, audience) {
+    const meal = daily && daily.meal || {}, weather = daily && daily.weather || {};
+    if (audience === 'teacher') {
+      $('#teacherMealTitle').textContent = meal.status === 'ready' ? (meal.mealName || '오늘 급식') : '급식 연결 확인';
+      $('#teacherMealMenu').innerHTML = meal.status === 'ready' ? meal.dishes.map(dish => `<span>${escapeHtml(dish.name)}${dish.allergenCodes.length ? `<small> ${dish.allergenCodes.join('·')}</small>` : ''}</span>`).join('') : escapeHtml(meal.message || '학교 코드를 설정해 주세요.');
+      $('#teacherMealNote').textContent = meal.status === 'ready' ? `알레르기 등록 ${meal.registeredAllergyStudents || 0}명 · 오늘 주의 ${meal.warningStudentCount || 0}명 · 배식 전 실제 식단표 재확인` : '학생 알레르기 정보는 외부 API로 전송되지 않습니다.';
+      const card = $('#teacherWeatherCard'); card.dataset.level = weather.guidance && weather.guidance.level || '';
+      $('#teacherWeatherIcon').textContent = weatherIcon(weather.condition);
+      $('#teacherOutdoorLabel').textContent = weather.status === 'ready' ? weather.guidance.label : '날씨 연결 확인';
+      $('#teacherWeatherValues').textContent = weather.status === 'ready' ? `${weather.condition} ${weather.temperature ?? '-'}℃ · 강수 ${weather.precipitationProbability ?? '-'}% · 바람 ${weather.windSpeed ?? '-'}m/s` : (weather.message || '기상청 설정을 확인해 주세요.');
+      $('#teacherOutdoorMessage').textContent = weather.status === 'ready' ? weather.guidance.message : '최종 실외활동 판단은 교사가 현장을 확인해 결정합니다.';
+      return;
+    }
+    $('#studentMealTitle').textContent = meal.status === 'ready' ? (meal.mealName || '오늘 급식') : '오늘 급식 안내';
+    $('#studentMealMenu').innerHTML = meal.status === 'ready' ? meal.dishes.map(dish => `<span>${escapeHtml(dish.name)}${dish.allergenCodes.length ? `<small> (${dish.allergenCodes.join('·')})</small>` : ''}</span>`).join('') : escapeHtml(meal.message || '선생님과 오늘 식단을 확인해요.');
+    const warnings = meal.warningDishes || [], warningBox = $('#studentAllergyWarning');
+    warningBox.classList.toggle('warning', warnings.length > 0);
+    warningBox.innerHTML = warnings.length ? `<b>내가 피해야 할 수 있는 음식</b><br>${warnings.map(dish => `${escapeHtml(dish.name)} — ${escapeHtml(dish.matchedNames.join('·'))}`).join('<br>')}<br><small>먹기 전에 반드시 선생님께 다시 확인하세요.</small>` : '등록된 내 알레르기와 일치하는 메뉴가 없어요. 그래도 배식 전 실제 식단표를 확인해요.';
+    $('#studentAllergyProfile').textContent = meal.personalAllergens && meal.personalAllergens.length ? `내 등록 항목: ${meal.personalAllergens.join(' · ')}` : '등록된 알레르기 항목이 없습니다.';
+    const studentWeather = $('#studentWeatherCard'); studentWeather.dataset.level = weather.guidance && weather.guidance.level || '';
+    $('#studentWeatherIcon').textContent = weatherIcon(weather.condition);
+    $('#studentOutdoorLabel').textContent = weather.status === 'ready' ? weather.guidance.label : '오늘의 실외활동';
+    $('#studentWeatherValues').textContent = weather.status === 'ready' ? `${weather.condition} ${weather.temperature ?? '-'}℃ · 강수 ${weather.precipitationProbability ?? '-'}% · 바람 ${weather.windSpeed ?? '-'}m/s` : (weather.message || '선생님과 오늘 날씨를 확인해요.');
+    $('#studentOutdoorMessage').textContent = weather.status === 'ready' ? weather.guidance.message : '운동장 상태는 선생님과 함께 확인해요.';
+  }
+
+  function weatherIcon(condition) {
+    return ({ '맑음':'☀', '구름많음':'☁', '흐림':'흐', '비':'우', '비·눈':'비눈', '눈':'설', '소나기':'우' })[condition] || '날';
+  }
+
+  function schedulePolling() {
+    clearTimeout(pollTimer);
+    if (!appData) return;
+    const delay = appData.view === 'teacher' ? 5000 : appData.view === 'student' ? 12000 : 20000;
+    pollTimer = setTimeout(refreshState, delay);
+  }
+
+  async function refreshState() {
+    if (!appData) return;
+    if (document.hidden) return schedulePolling();
+    try { applyData(await callServer('getAppState', { classId: appData.classId || '' })); }
+    catch (error) { toast(errorText(error)); schedulePolling(); }
+  }
+
+  async function runAction(button, method, payload, workingLabel) {
+    setBusy(button, true, workingLabel);
+    try { applyData(await callServer(method, payload)); return true; }
+    catch (error) { toast(errorText(error)); return false; }
+    finally { setBusy(button, false); }
+  }
+
+  $('#retryButton').addEventListener('click', initialize);
+
+  $('#classForm').addEventListener('submit', async event => {
+    event.preventDefault();
+    const button = event.submitter;
+    const payload = { schoolName: $('#schoolName').value, className: $('#className').value, teacherName: $('#teacherName').value, teacherEmail: $('#teacherEmail').value };
+    if (await runAction(button, 'saveClass', payload, '연결 중…')) { event.target.reset(); toast('학급과 담임 계정을 연결했어요.'); }
+  });
+
+  $('#classList').addEventListener('click', async event => {
+    const button = event.target.closest('[data-open-class]');
+    if (!button) return;
+    setBusy(button, true, '여는 중…');
+    try { applyData(await callServer('getAppState', { classId: button.dataset.openClass })); }
+    catch (error) { toast(errorText(error)); }
+    finally { setBusy(button, false); }
+  });
+
+  $('#masterReturnButton').addEventListener('click', async event => {
+    if (await runAction(event.currentTarget, 'getAppState', { classId: '' }, '이동 중…')) serviceEditorClassId = '';
+  });
+
+  $('#serviceForm').addEventListener('submit', async event => {
+    event.preventDefault();
+    const payload = {
+      classId: appData.classId, neisOfficeCode: $('#neisOfficeCode').value, neisSchoolCode: $('#neisSchoolCode').value,
+      weatherNx: $('#weatherNx').value, weatherNy: $('#weatherNy').value,
+      neisApiKey: $('#neisApiKey').value, kmaApiKey: $('#kmaApiKey').value
+    };
+    serviceEditorClassId = '';
+    if (await runAction(event.submitter, 'saveServiceSettings', payload, '저장 중…')) toast('급식·날씨 연동 설정을 저장했어요.');
+  });
+
+  $$('[data-refresh-daily]').forEach(button => button.addEventListener('click', event => runAction(event.currentTarget, 'refreshDailyInfo', { classId: appData.classId }, '…')));
+
+  $('#sessionForm').addEventListener('submit', async event => {
+    event.preventDefault();
+    const minutes = Number($('#sessionMinutes').value);
+    const payload = {
+      classId: appData.classId, subject: $('#sessionSubject').value, title: $('#sessionTitle').value,
+      message: $('#sessionMessage').value, resourceLabel: $('#resourceLabel').value, resourceUrl: $('#resourceUrl').value,
+      endsAt: minutes ? new Date(Date.now() + minutes * 60000).toISOString() : '',
+      pollQuestion: $('#pollQuestion').value,
+      pollOptions: $('#pollOptions').value.split(',').map(value => value.trim()).filter(Boolean)
+    };
+    if (await runAction(event.submitter, 'publishSession', payload, '게시 중…')) toast('학생 화면에 새 활동을 게시했어요.');
+  });
+
+  $('#closeSessionButton').addEventListener('click', async event => {
+    if (!confirm('현재 학생 활동을 종료할까요?')) return;
+    if (await runAction(event.currentTarget, 'closeSession', { classId: appData.classId }, '종료 중…')) { editorSessionId = ''; toast('현재 활동을 종료했어요.'); }
+  });
+
+  $('#fillRosterButton').addEventListener('click', () => {
+    $('#rosterInput').value = (appData.roster || []).map(student => `${student.email}, ${student.number || ''}, ${student.name}, ${(student.allergenCodes || []).join('|')}`).join('\n');
+    toast('현재 명렬을 입력 칸에 불러왔어요.');
+  });
+
+  $('#saveRosterButton').addEventListener('click', async event => {
+    const entries = $('#rosterInput').value.split(/\r?\n/).map(line => line.trim()).filter(Boolean).map(line => {
+      const [email, number, name, allergenCodes = ''] = line.split(',').map(value => value.trim());
+      return { email, number, name, allergenCodes };
+    });
+    if (await runAction(event.currentTarget, 'saveRoster', { classId: appData.classId, entries }, '등록 중…')) toast(`${entries.length}명의 로그인 계정을 등록했어요.`);
+  });
+
+  $('#helpList').addEventListener('click', async event => {
+    const button = event.target.closest('[data-resolve-help]');
+    if (!button) return;
+    if (await runAction(button, 'resolveHelp', { classId: appData.classId, requestId: button.dataset.resolveHelp }, '확인 중…')) toast('도움 요청을 완료 처리했어요.');
+  });
+
+  $('#readyButton').addEventListener('click', event => runAction(event.currentTarget, 'submitStudentResponse', { sessionId: appData.state.sessionId, type: 'ready', value: '준비 완료' }, '보내는 중…'));
+  $('#understandingChoices').addEventListener('click', event => {
+    const button = event.target.closest('[data-value]');
+    if (button) runAction(button, 'submitStudentResponse', { sessionId: appData.state.sessionId, type: 'understanding', value: button.dataset.value }, '보내는 중…');
+  });
+  $('#studentPollOptions').addEventListener('click', event => {
+    const button = event.target.closest('[data-poll-value]');
+    if (button) runAction(button, 'submitStudentResponse', { sessionId: appData.state.sessionId, type: 'poll', value: button.dataset.pollValue }, '보내는 중…');
+  });
+  $('#helpButton').addEventListener('click', event => runAction(event.currentTarget, 'requestHelp', { sessionId: appData.state.sessionId, message: $('#helpMessage').value }, '요청 중…'));
+  $('#cancelHelpButton').addEventListener('click', event => runAction(event.currentTarget, 'cancelHelp', { requestId: appData.helpRequest.requestId }, '취소 중…'));
+  $('#exitButton').addEventListener('click', event => runAction(event.currentTarget, 'submitStudentResponse', { sessionId: appData.state.sessionId, type: 'exit', value: $('#exitText').value }, '보내는 중…'));
+
+  function updateCountdown() {
+    const now = Date.now() + serverOffset;
+    $('#serverClock').textContent = new Date(now).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
+    if (!appData || appData.view !== 'student' || !appData.state) return;
+    const countdown = $('#studentCountdown');
+    if (!appData.state.endsAt) { countdown.textContent = '함께 진행'; return; }
+    const seconds = Math.max(0, Math.ceil((Date.parse(appData.state.endsAt) - now) / 1000));
+    countdown.textContent = `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
+  }
+
+  setInterval(updateCountdown, 1000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshState(); });
+  initialize();
+})();
+</script>

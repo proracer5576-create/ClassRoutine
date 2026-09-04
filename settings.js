@@ -696,8 +696,73 @@ $$('[data-test-sound]').forEach(button => button.addEventListener("click", () =>
     : "브라우저의 소리 권한과 스피커 연결을 확인해 주세요.";
 }));
 $("#saveAlertSettings").addEventListener("click", () => { settings = { ...collectBaseSettings(), sound: $("#soundSetting").checked, globalSound: $("#globalSound").value, soundVolume: Number($("#soundVolume").value), reducedMotion: $("#motionSetting").checked, alertDisplaySeconds: Number($("#alertSeconds").value) }; CR.setSettings(settings); selectGlobalSound(settings.globalSound, { saved: true }); document.documentElement.classList.toggle("reduce-motion", settings.reducedMotion); toast(`${soundLabel(settings.globalSound)}을 모든 일정의 알림음으로 저장했어요.`); });
-$("#exportBackup").addEventListener("click", () => { const backup = { version: 2, exportedAt: new Date().toISOString(), settings: CR.getSettings(), subjects: CR.getSubjects(), routines: CR.getRoutines(), records: CR.getRecords(), handoffs: CR.getHandoffs(), memos: CR.load(CR.KEYS.memos, {}), roster: CR.load(CR.KEYS.roster, []), weeklyTimetables: CR.getWeeklyTimetables(), duties: CR.getDutyBoard() }; const link = document.createElement("a"); link.href = URL.createObjectURL(new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" })); link.download = `교실루틴_전체백업_${CR.dateKey()}.json`; link.click(); URL.revokeObjectURL(link.href); toast("시간표·명렬표·1인 1역을 포함한 전체 백업을 저장했어요."); });
-$("#importBackup").addEventListener("change", async event => { const file = event.target.files[0]; if (!file) return; try { const data = JSON.parse(await file.text()); if (!data.settings || !Array.isArray(data.routines)) throw new Error(); if (!confirm("현재 설정·일정·시간표와 저장 데이터를 백업 파일 내용으로 바꿀까요?")) return; CR.setSettings(data.settings); CR.setSubjects(data.subjects || subjects); CR.setRoutines(data.routines); if (Array.isArray(data.records)) CR.setRecords(data.records); if (Array.isArray(data.handoffs)) CR.setHandoffs(data.handoffs); if (data.memos && typeof data.memos === "object") CR.save(CR.KEYS.memos, data.memos); if (Array.isArray(data.roster)) CR.save(CR.KEYS.roster, data.roster); if (data.weeklyTimetables && typeof data.weeklyTimetables === "object") CR.setWeeklyTimetables(data.weeklyTimetables); if (data.duties && typeof data.duties === "object") CR.setDutyBoard(data.duties); settings = CR.getSettings(); subjects = CR.getSubjects(); routines = CR.getRoutines(); timetable = initialTimetable(); fillBaseSettings(); renderSubjects(); renderRoutines(); renderTimetable(); toast("전체 백업을 복원했어요."); } catch { toast("올바른 교실 루틴 백업 파일이 아닙니다."); } event.target.value = ""; });
+function createFullBackup() {
+  return { version: 2, exportedAt: new Date().toISOString(), settings: CR.getSettings(), subjects: CR.getSubjects(), routines: CR.getRoutines(), records: CR.getRecords(), handoffs: CR.getHandoffs(), memos: CR.load(CR.KEYS.memos, {}), roster: CR.load(CR.KEYS.roster, []), weeklyTimetables: CR.getWeeklyTimetables(), duties: CR.getDutyBoard() };
+}
+
+function downloadBackupInBrowser(content, fileName) {
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(new Blob([content], { type: "application/json" }));
+  link.download = fileName;
+  link.click();
+  URL.revokeObjectURL(link.href);
+}
+
+async function restoreFullBackupText(text) {
+  try {
+    const data = JSON.parse(String(text).replace(/^\uFEFF/, ""));
+    if (!data.settings || !Array.isArray(data.routines)) throw new Error("invalid backup");
+    if (!confirm("현재 설정·일정·시간표와 저장 데이터를 백업 파일 내용으로 바꿀까요?")) return false;
+    CR.setSettings(data.settings); CR.setSubjects(data.subjects || subjects); CR.setRoutines(data.routines);
+    if (Array.isArray(data.records)) CR.setRecords(data.records);
+    if (Array.isArray(data.handoffs)) CR.setHandoffs(data.handoffs);
+    if (data.memos && typeof data.memos === "object") CR.save(CR.KEYS.memos, data.memos);
+    if (Array.isArray(data.roster)) CR.save(CR.KEYS.roster, data.roster);
+    if (data.weeklyTimetables && typeof data.weeklyTimetables === "object") CR.setWeeklyTimetables(data.weeklyTimetables);
+    if (data.duties && typeof data.duties === "object") CR.setDutyBoard(data.duties);
+    settings = CR.getSettings(); subjects = CR.getSubjects(); routines = CR.getRoutines(); timetable = initialTimetable();
+    fillBaseSettings(); renderSubjects(); renderRoutines(); renderTimetable(); renderDataCounts();
+    toast("전체 백업을 복원했어요.");
+    return true;
+  } catch {
+    toast("올바른 교실 루틴 백업 파일이 아닙니다.");
+    return false;
+  }
+}
+
+$("#exportBackup").addEventListener("click", async () => {
+  const fileName = `교실루틴_전체백업_${CR.dateKey()}.json`;
+  const content = JSON.stringify(createFullBackup(), null, 2);
+  if (window.classRoutineDesktop?.saveBackup) {
+    try {
+      const result = await window.classRoutineDesktop.saveBackup({ content, fileName });
+      if (result?.canceled) return;
+      toast(result?.ok ? "데이터 폴더에 전체 백업을 저장했어요." : "전체 백업을 저장하지 못했어요.");
+    } catch { toast("전체 백업을 저장하지 못했어요."); }
+    return;
+  }
+  downloadBackupInBrowser(content, fileName);
+  toast("시간표·명렬표·1인 1역을 포함한 전체 백업을 저장했어요.");
+});
+
+$("#importBackupButton").addEventListener("click", async () => {
+  if (window.classRoutineDesktop?.openBackup) {
+    try {
+      const result = await window.classRoutineDesktop.openBackup();
+      if (result?.canceled) return;
+      if (!result?.ok) return toast("백업 파일을 읽지 못했어요.");
+      await restoreFullBackupText(result.content);
+    } catch { toast("백업 파일을 읽지 못했어요."); }
+    return;
+  }
+  $("#importBackup").click();
+});
+
+$("#importBackup").addEventListener("change", async event => {
+  const file = event.target.files[0];
+  if (file) await restoreFullBackupText(await file.text());
+  event.target.value = "";
+});
 $("#refreshDataStatus").addEventListener("click", () => refreshDataCenter({ announce: true }));
 $("#openDataFolder").addEventListener("click", async () => {
   const directory = $("#dataDirectoryPath").textContent;
@@ -713,18 +778,100 @@ $("#restoreFolderState").addEventListener("click", async event => {
   if (!confirm("문서 폴더의 전체 작업본으로 현재 화면 데이터를 다시 불러올까요?\n문서 폴더 파일 자체는 변경하지 않습니다.")) return;
   const button = event.currentTarget;
   button.disabled = true;
-  button.querySelector("span").textContent = "불러오는 중…";
+  button.querySelector("span:last-of-type").textContent = "불러오는 중…";
   const result = await CR.restoreFolderState(true);
   if (!result.ok || !result.applied) {
     button.disabled = false;
-    button.querySelector("span").textContent = "문서 폴더 다시 불러오기";
+    button.querySelector("span:last-of-type").textContent = "전체 작업본으로 복원";
     toast(result.ok ? "불러올 전체 작업본이 없습니다." : "문서 폴더 작업본을 읽지 못했어요.");
     return;
   }
   toast(`문서 폴더에서 ${result.keys.length}개 데이터 영역을 복원했어요.`);
   setTimeout(() => location.reload(), 700);
 });
-window.addEventListener("classroutinechange", renderDataCounts);
+
+let integrationSettings = {};
+function integrationPayload() {
+  return {
+    neisOfficeCode: $("#neisOfficeCode").value,
+    neisSchoolCode: $("#neisSchoolCode").value,
+    neisApiKey: $("#neisApiKey").value,
+    weatherNx: $("#weatherNx").value,
+    weatherNy: $("#weatherNy").value,
+    kmaApiKey: $("#kmaApiKey").value
+  };
+}
+function renderIntegrationSettings(value = {}) {
+  integrationSettings = value;
+  $("#neisOfficeCode").value = value.neisOfficeCode || "";
+  $("#neisSchoolCode").value = value.neisSchoolCode || "";
+  $("#weatherNx").value = value.weatherNx || "";
+  $("#weatherNy").value = value.weatherNy || "";
+  $("#neisApiKey").value = ""; $("#kmaApiKey").value = "";
+  $("#neisKeyState").textContent = value.hasNeisApiKey ? "저장됨" : "미등록 · 샘플 조회";
+  $("#kmaKeyState").textContent = value.hasKmaApiKey ? "저장됨" : "미등록";
+}
+async function loadIntegrationSettings() {
+  try {
+    const response = await fetch("/api/integration-settings", { cache:"no-store" });
+    if (!response.ok) throw new Error();
+    renderIntegrationSettings(await response.json());
+    $("#integrationStatus").textContent = "문서 폴더의 연동 설정을 불러왔어요.";
+  } catch { $("#integrationStatus").textContent = "설치형 프로그램에서 연동 설정을 사용할 수 있어요."; }
+}
+function renderDailyPreview(data) {
+  const meal = data?.meal || {}, weather = data?.weather || {}, roster = CR.load(CR.KEYS.roster, []), warnings = CR.mealWarnings(meal, roster);
+  const mealHtml = meal.status === "ready" ? `<b>${escapeHtml(meal.mealName || "오늘 급식")}</b><br>${meal.dishes.map(dish => `${escapeHtml(dish.name)}${dish.allergenCodes.length ? ` <small>(${dish.allergenCodes.join("·")})</small>` : ""}`).join(" · ")}<br><strong>맞춤 주의 ${warnings.length}명</strong>${warnings.length ? `<details><summary>교사용 상세 보기</summary>${warnings.map(student => `<p>${escapeHtml(student.number)}번 ${escapeHtml(student.name)} — ${student.dishes.map(dish => `${escapeHtml(dish.name)}(${dish.matchedNames.join("·")})`).join(", ")}</p>`).join("")}</details>` : ""}` : escapeHtml(meal.message || "급식 설정을 확인해 주세요.");
+  const weatherHtml = weather.status === "ready" ? `<b>${escapeHtml(weather.condition)} · ${weather.temperature ?? "-"}℃</b><br>강수 ${weather.precipitationProbability ?? "-"}% · 바람 ${weather.windSpeed ?? "-"}m/s<br><strong>${escapeHtml(weather.guidance?.label || "현장 확인")}</strong> ${escapeHtml(weather.guidance?.message || "")}` : escapeHtml(weather.message || "날씨 설정을 확인해 주세요.");
+  $("#dailyPreview").innerHTML = `<div><span>급식</span><p>${mealHtml}</p></div><div><span>날씨</span><p>${weatherHtml}</p></div>`;
+}
+async function fetchDailyPreview(force = false) {
+  const button = $("#testDailyInfo"); button.disabled = true; button.textContent = "불러오는 중…";
+  try {
+    const response = await fetch(`/api/daily-info${force ? "?refresh=1" : ""}`, { cache:"no-store" });
+    if (!response.ok) throw new Error();
+    renderDailyPreview(await response.json());
+    $("#integrationStatus").textContent = "오늘 정보를 확인했어요.";
+  } catch { $("#integrationStatus").textContent = "급식·날씨 정보를 불러오지 못했어요."; }
+  finally { button.disabled = false; button.textContent = "오늘 정보 불러오기"; }
+}
+function renderAllergyEditor() {
+  const roster = CR.load(CR.KEYS.roster, []), select = $("#allergyStudentSelect"), previous = select.value;
+  select.innerHTML = roster.length ? `<option value="">학생 선택</option>${roster.map((student, index) => `<option value="${index}">${escapeHtml(student.number)}번 ${escapeHtml(student.name)}</option>`).join("")}` : `<option value="">명렬표를 먼저 연결해 주세요</option>`;
+  if (previous && roster[Number(previous)]) select.value = previous;
+  $("#allergenOptions").innerHTML = Object.entries(CR.ALLERGENS).map(([code, name]) => `<label><input type="checkbox" value="${code}" disabled><span><i>${code}</i><b>${escapeHtml(name)}</b></span></label>`).join("");
+  syncAllergySelection();
+}
+function syncAllergySelection() {
+  const roster = CR.load(CR.KEYS.roster, []), index = $("#allergyStudentSelect").value, student = index === "" ? null : roster[Number(index)], codes = CR.normalizeAllergenCodes(student?.allergenCodes);
+  $$("#allergenOptions input").forEach(input => { input.disabled = !student; input.checked = codes.includes(input.value); });
+  $("#saveStudentAllergens").disabled = !student;
+}
+async function persistRosterFromSettings(roster) {
+  const csvCell = value => `"${String(value ?? "").replaceAll('"', '""')}"`;
+  const csv = "\uFEFF" + [["번호","이름","알레르기번호"], ...roster.map(student => [student.number, student.name, CR.normalizeAllergenCodes(student.allergenCodes).join("|")])].map(row => row.map(csvCell).join(",")).join("\r\n");
+  try { await fetch("/api/roster-csv", { method:"PUT", headers:{ "Content-Type":"text/csv; charset=utf-8" }, body:csv }); } catch {}
+}
+$("#saveIntegrationSettings").addEventListener("click", async event => {
+  const button = event.currentTarget; button.disabled = true; button.textContent = "저장 중…";
+  try {
+    const response = await fetch("/api/integration-settings", { method:"PUT", headers:{ "Content-Type":"application/json; charset=utf-8" }, body:JSON.stringify(integrationPayload()) });
+    if (!response.ok) throw new Error();
+    const result = await response.json(); renderIntegrationSettings(result.settings); await refreshDataCenter();
+    $("#integrationStatus").textContent = "연동 설정을 별도 파일에 저장했어요."; toast("급식·날씨 연동 설정을 저장했어요.");
+  } catch { $("#integrationStatus").textContent = "설치형 프로그램에서 저장해 주세요."; toast("연동 설정을 저장하지 못했어요."); }
+  finally { button.disabled = false; button.textContent = "연동 설정 저장"; }
+});
+$("#testDailyInfo").addEventListener("click", () => fetchDailyPreview(true));
+$("#allergyStudentSelect").addEventListener("change", syncAllergySelection);
+$("#saveStudentAllergens").addEventListener("click", async () => {
+  const roster = CR.load(CR.KEYS.roster, []), index = $("#allergyStudentSelect").value;
+  if (index === "" || !roster[Number(index)]) return toast("학생을 먼저 선택해 주세요.");
+  roster[Number(index)] = { ...roster[Number(index)], allergenCodes:$$("#allergenOptions input:checked").map(input => input.value) };
+  CR.save(CR.KEYS.roster, roster); CR.notify("roster"); await persistRosterFromSettings(roster); renderDataCounts();
+  toast(`${roster[Number(index)].name} 학생의 알레르기 정보를 저장했어요.`); fetchDailyPreview();
+});
+window.addEventListener("classroutinechange", event => { renderDataCounts(); if (event.detail?.scope === "roster") renderAllergyEditor(); });
 $$('[data-close]').forEach(button => button.addEventListener("click", () => $("#" + button.dataset.close).close()));
 
-timetable = initialTimetable(); fillBaseSettings(); renderSubjects(); renderRoutines(); renderWeekIdentity(); renderTimetable(); restoreTimetableCsv(); refreshDataCenter(); document.documentElement.classList.toggle("reduce-motion", settings.reducedMotion);
+timetable = initialTimetable(); fillBaseSettings(); renderSubjects(); renderRoutines(); renderWeekIdentity(); renderTimetable(); renderAllergyEditor(); loadIntegrationSettings().then(() => fetchDailyPreview()); restoreTimetableCsv(); refreshDataCenter(); document.documentElement.classList.toggle("reduce-motion", settings.reducedMotion);

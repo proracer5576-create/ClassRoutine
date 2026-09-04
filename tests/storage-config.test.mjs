@@ -19,6 +19,7 @@ assert.equal(result.dataDirectory, path.resolve(target));
 assert.deepEqual(result.migrated, [DATA_FILES.timetable]);
 assert.equal(await fsp.readFile(path.join(target, DATA_FILES.timetable), "utf8"), "source timetable");
 assert.equal(await fsp.readFile(path.join(target, DATA_FILES.roster), "utf8"), "keep existing roster", "Existing data must never be overwritten by migration.");
+assert.equal(DATA_FILES.integrations, "외부연동설정.json");
 
 await fsp.rm(base, { recursive: true, force: true });
 console.log("storage-config: unified path, non-destructive migration, and fixed filenames OK");

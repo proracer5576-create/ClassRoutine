@@ -34,8 +34,18 @@ for (const htmlName of ["index.html", "settings.html", "student.html", "roles.ht
 }
 
 const settingsHtml = await fsp.readFile(path.join(project, "settings.html"), "utf8");
-for (const id of ["dataConnectionBadge", "dataDirectoryPath", "dataRoutineCount", "dataRecordCount", "dataWeekCount", "dataRosterCount", "dataDutyCount", "openDataFolder", "refreshDataStatus", "restoreFolderState"]) {
+for (const id of ["dataConnectionBadge", "dataDirectoryPath", "dataRoutineCount", "dataRecordCount", "dataWeekCount", "dataRosterCount", "dataDutyCount", "openDataFolder", "refreshDataStatus", "restoreFolderState", "importBackupButton"]) {
   assert.match(settingsHtml, new RegExp(`id="${id}"`), `settings data center must include #${id}.`);
 }
+for (const id of ["neisOfficeCode", "neisSchoolCode", "weatherNx", "weatherNy", "saveIntegrationSettings", "testDailyInfo", "allergyStudentSelect", "allergenOptions", "saveStudentAllergens"]) {
+  assert.match(settingsHtml, new RegExp(`id="${id}"`), `settings daily info must include #${id}.`);
+}
+assert.match(await fsp.readFile(path.join(project, "index.html"), "utf8"), /id="todayMealDishes"/);
+assert.match(await fsp.readFile(path.join(project, "student.html"), "utf8"), /id="studentMealDishes"/);
+
+const teacherStyles = await fsp.readFile(path.join(project, "styles.css"), "utf8");
+const recordRule = teacherStyles.match(/\.record-card\{([^}]+)\}/)?.[1] || "";
+assert.match(recordRule, /position:relative/, "today record card must stay in normal document flow.");
+assert.doesNotMatch(recordRule, /position:(?:sticky|fixed)/, "today record card must not follow scrolling or cover other content.");
 
 console.log("ui-contract: HTML IDs, local assets, CSS braces, shared theme, and offline styles OK");

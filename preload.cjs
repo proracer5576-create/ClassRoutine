@@ -8,6 +8,12 @@ contextBridge.exposeInMainWorld("classRoutineDesktop", Object.freeze({
   openDataFolder() {
     return ipcRenderer.invoke("desktop:open-data-folder");
   },
+  saveBackup(payload) {
+    return ipcRenderer.invoke("desktop:save-backup", payload);
+  },
+  openBackup() {
+    return ipcRenderer.invoke("desktop:open-backup");
+  },
   onOpenRoutine(callback) {
     if (typeof callback !== "function") return () => {};
     const listener = (_event, routineId) => callback(routineId);

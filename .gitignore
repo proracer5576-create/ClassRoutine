@@ -5,6 +5,7 @@
 /*기록*.csv
 /교실루틴_설정*.json
 /데스크톱설정.json
+/외부연동설정.json
 /data/
 !/주간시간표_빈파일.csv
 !/1인1역_배정_빈파일.csv
@@ -22,5 +23,6 @@
 /dist/
 /release/
 /.edge-test*/
+/apps-script/.clasp.json
 .DS_Store
 Thumbs.db
