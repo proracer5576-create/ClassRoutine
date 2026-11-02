@@ -73,18 +73,45 @@ async function fetchJson(url, fetchFn) {
   return response.json();
 }
 
+export async function searchSchools(config = {}, query = "", { fetchFn = globalThis.fetch } = {}) {
+  const safe = sanitizeIntegrationSettings(config);
+  const schoolName = String(query || "").replace(/[\x00-\x1F<>]/g, " ").replace(/\s+/g, " ").trim().slice(0, 50);
+  if (schoolName.length < 2) return { status:"invalid", message:"학교 이름을 두 글자 이상 입력해 주세요.", schools:[] };
+  if (!safe.neisApiKey) return { status:"unconfigured", message:"나이스 API 인증키를 먼저 입력해 주세요.", schools:[] };
+  try {
+    const params = new URLSearchParams({ KEY:safe.neisApiKey, Type:"json", pIndex:"1", pSize:"50", SCHUL_NM:schoolName });
+    const data = await fetchJson(`https://open.neis.go.kr/hub/schoolInfo?${params}`, fetchFn);
+    const blocks = Array.isArray(data.schoolInfo) ? data.schoolInfo : [];
+    const rows = blocks.find(block => Array.isArray(block.row))?.row || [];
+    const schools = rows.map(row => ({
+      officeCode:String(row.ATPT_OFCDC_SC_CODE || "").slice(0, 10),
+      officeName:String(row.ATPT_OFCDC_SC_NM || "").slice(0, 40),
+      schoolCode:String(row.SD_SCHUL_CODE || "").slice(0, 20),
+      schoolName:String(row.SCHUL_NM || "").slice(0, 60),
+      schoolType:String(row.SCHUL_KND_SC_NM || "").slice(0, 30),
+      address:String(row.ORG_RDNMA || row.ORG_RDNDA || "").slice(0, 120)
+    })).filter(item => item.officeCode && item.schoolCode && item.schoolName);
+    return schools.length
+      ? { status:"ready", message:`${schools.length}개 학교를 찾았습니다.`, schools }
+      : { status:"empty", message:"일치하는 학교가 없습니다. 정식 학교명을 확인해 주세요.", schools:[] };
+  } catch (error) {
+    return { ...publicError(error, "학교를 검색하지 못했습니다"), schools:[] };
+  }
+}
+
 async function fetchMeal(config, now, fetchFn, force) {
+  if (!config.neisApiKey) return { status:"unconfigured", message:"나이스 API 인증키를 설정해 주세요.", dishes:[] };
   if (!config.neisOfficeCode || !config.neisSchoolCode) return { status:"unconfigured", message:"나이스 교육청 코드와 학교 코드를 설정해 주세요.", dishes:[] };
   const date = dateKey(now), key = `meal:${config.neisOfficeCode}:${config.neisSchoolCode}:${date}`;
   if (!force && cache.get(key)?.expiresAt > Date.now()) return cache.get(key).value;
   try {
     const params = new URLSearchParams({ Type:"json", pIndex:"1", pSize:"10", ATPT_OFCDC_SC_CODE:config.neisOfficeCode, SD_SCHUL_CODE:config.neisSchoolCode, MLSV_YMD:date });
-    if (config.neisApiKey) params.set("KEY", config.neisApiKey);
+    params.set("KEY", config.neisApiKey);
     const data = await fetchJson(`https://open.neis.go.kr/hub/mealServiceDietInfo?${params}`, fetchFn);
     const blocks = Array.isArray(data.mealServiceDietInfo) ? data.mealServiceDietInfo : [];
     const rows = blocks.find(block => Array.isArray(block.row))?.row || [];
     const lunch = rows.find(row => String(row.MMEAL_SC_CODE) === "2" || String(row.MMEAL_SC_NM).includes("중식")) || rows[0];
-    const value = lunch ? { status:"ready", date:String(lunch.MLSV_YMD || date), mealName:String(lunch.MMEAL_SC_NM || "오늘 급식").slice(0, 30), dishes:parseMealDishes(lunch.DDISH_NM), calories:String(lunch.CAL_INFO || "").slice(0, 40), source:"나이스 교육정보 개방 포털", sampleMode:!config.neisApiKey } : { status:"empty", date, message:"오늘 등록된 급식 정보가 없습니다.", dishes:[], source:"나이스 교육정보 개방 포털", sampleMode:!config.neisApiKey };
+    const value = lunch ? { status:"ready", date:String(lunch.MLSV_YMD || date), mealName:String(lunch.MMEAL_SC_NM || "오늘 급식").slice(0, 30), dishes:parseMealDishes(lunch.DDISH_NM), calories:String(lunch.CAL_INFO || "").slice(0, 40), source:"나이스 교육정보 개방 포털" } : { status:"empty", date, message:"오늘 등록된 급식 정보가 없습니다.", dishes:[], source:"나이스 교육정보 개방 포털" };
     cache.set(key, { value, expiresAt:Date.now() + 30 * 60000 });
     return value;
   } catch (error) { return { ...publicError(error, "급식 정보를 불러오지 못했습니다"), dishes:[] }; }
@@ -118,6 +145,7 @@ export function sanitizeIntegrationSettings(value = {}, previous = {}) {
   const grid = input => { const number = Number(input); return Number.isInteger(number) && number >= 1 && number <= 300 ? String(number) : ""; };
   const key = input => { let text = String(input || "").trim(); if (!text) return ""; try { text = decodeURIComponent(text); } catch {} return !/\s/.test(text) && text.length <= 1000 ? text : ""; };
   return {
+    schoolName:String(value.schoolName ?? previous.schoolName ?? "").replace(/[\x00-\x1F<>]/g, " ").replace(/\s+/g, " ").trim().slice(0, 60),
     neisOfficeCode:code(value.neisOfficeCode ?? previous.neisOfficeCode, 10),
     neisSchoolCode:code(value.neisSchoolCode ?? previous.neisSchoolCode, 20),
     weatherNx:grid(value.weatherNx ?? previous.weatherNx), weatherNy:grid(value.weatherNy ?? previous.weatherNy),
@@ -127,7 +155,7 @@ export function sanitizeIntegrationSettings(value = {}, previous = {}) {
 }
 
 export function publicIntegrationSettings(value = {}) {
-  return { neisOfficeCode:value.neisOfficeCode || "", neisSchoolCode:value.neisSchoolCode || "", weatherNx:value.weatherNx || "", weatherNy:value.weatherNy || "", hasNeisApiKey:Boolean(value.neisApiKey), hasKmaApiKey:Boolean(value.kmaApiKey) };
+  return { schoolName:value.schoolName || "", neisOfficeCode:value.neisOfficeCode || "", neisSchoolCode:value.neisSchoolCode || "", weatherNx:value.weatherNx || "", weatherNy:value.weatherNy || "", hasNeisApiKey:Boolean(value.neisApiKey), hasKmaApiKey:Boolean(value.kmaApiKey) };
 }
 
 export async function loadDailyInfo(config = {}, { now = new Date(), fetchFn = globalThis.fetch, force = false } = {}) {

@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#173d36">
+  <title>자리 바꾸기 · 오늘도 차근차근</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="seating.css">
+  <link rel="stylesheet" href="cute-theme.css">
+</head>
+<body class="seating-page">
+  <div class="grain" aria-hidden="true"></div>
+  <header class="topbar seating-topbar">
+    <a class="brand" href="index.html"><span class="brand-mark">⌑</span><span><b>오늘도, 차근차근</b><small>자리 바꾸기</small></span></a>
+    <nav class="seating-nav" aria-label="화면 이동"><a href="index.html">교사 화면</a><a href="student.html" target="_blank">학생 화면 ↗</a><a href="roles.html">1인 1역</a><a class="active" href="seating.html" aria-current="page">자리 바꾸기</a><a href="settings.html">설정</a><a href="guide.html">설명서</a></nav>
+  </header>
+  <main class="seating-main">
+    <section class="seating-hero">
+      <div><p class="eyebrow">SEAT SHUFFLE STUDIO</p><h1>우리 반 자리,<br><em>새롭게 앉아 볼까요?</em></h1><p>명렬표 학생을 그대로 불러오고, 이전 자리와 짝을 피해 새 배치를 만듭니다.</p></div>
+      <div class="hero-note"><span>이번 배치</span><strong id="roundLabel">준비 중</strong><small id="saveState">명렬표를 확인하고 있어요.</small></div>
+    </section>
+    <section class="seating-layout">
+      <aside class="control-stack">
+        <section class="panel roster-panel"><div class="panel-heading"><div><p class="eyebrow">CLASS ROSTER</p><h2>학생과 성별</h2></div><b id="rosterCount">0명</b></div><p class="panel-copy">명렬표의 이름은 수정하지 않습니다. 성별은 자리 배치에만 쓰는 선택 정보입니다.</p><div id="genderList" class="gender-list"></div><a class="soft-link" href="settings.html#data">명렬표 가져오기 · 수정 →</a></section>
+        <section class="panel"><div class="panel-heading"><div><p class="eyebrow">CLASSROOM SHAPE</p><h2>교실 모양</h2></div></div>
+          <div class="field-grid"><label>분단<select id="sectionCount"><option value="1">1분단</option><option value="2">2분단</option><option value="3" selected>3분단</option><option value="4">4분단</option><option value="5">5분단</option><option value="6">6분단</option></select></label><label>세로 줄<input id="rowCount" type="number" min="1" max="10" value="5"></label></div>
+          <div id="sectionSeats" class="section-seats"></div>
+        </section>
+        <section class="panel"><div class="panel-heading"><div><p class="eyebrow">SMART RULES</p><h2>배치 규칙</h2></div></div>
+          <label class="switch-row"><input id="mixGender" type="checkbox" checked><span></span>남녀 섞어 앉기</label>
+          <label class="switch-row"><input id="avoidPairs" type="checkbox" checked><span></span>이전 짝 피하기</label>
+          <label class="switch-row"><input id="avoidSeats" type="checkbox" checked><span></span>이전 자리 피하기</label>
+          <p class="rule-note">학생 수나 성별 구성상 어려운 규칙은 가능한 범위에서 적용합니다.</p>
+        </section>
+        <div class="action-stack"><button id="generateSeats" class="primary-action" type="button">새 자리 만들기 <span>↻</span></button><button id="saveSeats" class="secondary-action" type="button">이번 자리 확정 · 저장</button><button id="openHistory" class="secondary-action history-btn" type="button">배치 이력 보기 (<b id="historyCount">0</b>)</button><button id="clearHistory" class="quiet-action" type="button">배치 이력 비우기</button></div>
+      </aside>
+      <section class="board-area"><div class="board-heading"><div><p class="eyebrow">TODAY'S CLASSROOM</p><h2>자리 배치판</h2><p id="boardHint">좌석 하나를 누른 뒤 다른 좌석을 누르면 두 학생의 자리가 바뀝니다.</p></div><div class="board-stats"><span>학생 <b id="placedCount">0</b></span><span>빈자리 <b id="emptyCount">0</b></span></div></div><div class="blackboard">오늘도 서로 배려하며 배우는 우리 반</div><div id="seatBoard" class="seat-board" aria-live="polite"></div><p id="constraintNote" class="constraint-note"></p></section>
+    </section>
+  </main>
+  <dialog id="historyDialog" class="history-dialog"><section><header><div><p class="eyebrow">SEATING HISTORY</p><h2>배치 이력</h2></div><button type="button" data-close="historyDialog" aria-label="닫기">×</button></header><div id="historyList"></div><footer><button id="downloadHistory" class="secondary-action" type="button">CSV 내려받기</button><button type="button" data-close="historyDialog" class="quiet-action">닫기</button></footer></section></dialog>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script src="shared.js"></script><script src="seating.js"></script>
+</body>
+</html>

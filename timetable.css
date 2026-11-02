@@ -24,6 +24,7 @@
 .timetable-toolbar small { margin-top:4px; color:#afc5bf; font-size:9px; }
 .timetable-toolbar>div:last-child { display:flex; gap:7px; }
 .timetable-toolbar .line-button { border-color:rgba(255,255,255,.35); color:#fff; background:transparent; }
+.timetable-toolbar .timetable-import-trigger { color:#132f29; border-color:var(--yellow); background:var(--yellow); }
 .timetable-wrap { overflow:auto; padding-bottom:8px; }
 .timetable-grid { --day-count:5; min-width:760px; display:grid; grid-template-columns:82px repeat(var(--day-count),minmax(125px,1fr)); border-top:2px solid var(--ink); border-left:1px solid var(--line); background:#fffef9; }
 .tt-corner,.tt-day,.tt-period,.tt-cell { min-height:66px; border-right:1px solid var(--line); border-bottom:1px solid var(--line); }
@@ -64,6 +65,34 @@
 .timetable-footer p i { width:8px; height:8px; flex:0 0 auto; margin-top:4px; border-radius:50%; background:var(--green); box-shadow:0 0 0 4px rgba(47,118,102,.12); }
 .timetable-footer p b { display:block; color:var(--ink); }
 .timetable-footer button { white-space:nowrap; }
+.timetable-import-dialog form { min-height:100%; display:flex; flex-direction:column; padding:0; }
+.timetable-import-dialog form>header { margin:0; }
+.timetable-import-body { flex:1; padding:22px 29px 0; overflow:auto; }
+.timetable-import-summary { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; }
+.timetable-import-summary article { min-height:88px; padding:15px; border:1px solid var(--line); background:#fffef9; }
+.timetable-import-summary article:first-child { border-color:var(--green); background:#e5f2ed; }
+.timetable-import-summary span,.timetable-import-summary b,.timetable-import-summary small { display:block; }
+.timetable-import-summary span { color:var(--orange); font:900 8px Manrope,sans-serif; letter-spacing:.1em; }
+.timetable-import-summary b { margin-top:5px; font-size:15px; }
+.timetable-import-summary small { margin-top:4px; color:var(--soft); font-size:9px; line-height:1.4; }
+.timetable-import-summary .warning { border-color:#d7a832; background:#fff5ca; }
+.timetable-import-preview { margin-top:16px; overflow:auto; border:1px solid var(--line); background:#fff; }
+.timetable-import-preview table { width:100%; min-width:720px; border-collapse:collapse; }
+.timetable-import-preview th,.timetable-import-preview td { min-width:105px; padding:10px 9px; border-right:1px solid var(--line); border-bottom:1px solid var(--line); text-align:center; }
+.timetable-import-preview thead th { color:#fff; background:var(--ink); font-size:10px; }
+.timetable-import-preview th:first-child { min-width:64px; }
+.timetable-import-preview tbody th { color:var(--orange); background:#f5efe2; font-size:12px; }
+.timetable-import-preview td { color:var(--ink); font-size:10px; font-weight:850; }
+.timetable-import-preview td.empty { color:#b9b4a8; font-weight:650; }
+.timetable-import-mapping { display:grid; grid-template-columns:minmax(190px,.55fr) minmax(430px,1.45fr); gap:18px; margin-top:16px; padding:17px; border:1px solid var(--line); background:#f3eddf; }
+.timetable-import-mapping h3 { margin:2px 0 5px; font-size:17px; }
+.timetable-import-mapping p { margin:0; color:var(--soft); font-size:9px; line-height:1.55; }
+#timetableImportMappings { display:grid; gap:7px; }
+.timetable-import-map-row { display:grid; grid-template-columns:minmax(120px,.8fr) 24px minmax(180px,1.2fr); align-items:center; gap:8px; margin:0!important; }
+.timetable-import-map-row b { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:10px; }
+.timetable-import-map-row i { color:var(--orange); text-align:center; font-style:normal; font-weight:950; }
+.timetable-import-map-row select { width:100%; margin:0!important; padding:9px!important; font-size:10px!important; }
+.timetable-import-actions { flex:none; margin:0; padding:18px 29px 25px; border-top:1px solid var(--line); background:var(--paper); }
 @media(max-width:650px) {
   .week-navigator { grid-template-columns:44px 1fr 44px; padding:11px; }
   .week-navigator>button { width:40px; height:40px; }
@@ -78,4 +107,8 @@
   .timetable-toolbar>div:last-child { width:100%; }
   .timetable-toolbar button { flex:1; }
   .timetable-footer button { width:100%; }
+  .timetable-import-summary { grid-template-columns:1fr; }
+  .timetable-import-mapping { grid-template-columns:1fr; }
+  .timetable-import-map-row { grid-template-columns:1fr; }
+  .timetable-import-map-row i { display:none; }
 }

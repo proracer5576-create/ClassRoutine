@@ -84,6 +84,7 @@ assert.equal(cleaning[0].duration, 10);
 assert.deepEqual(Array.from(cleaning[0].activeDays), [1, 2, 3, 4, 5]);
 assert.equal(CR.preAlertFor(cleaning[0]), 2);
 assert.equal(CR.isCleaningRoutine(cleaning[0]), true);
+assert.match(cleaning[0].eventMessage, /크린토피아.*우유/, "The built-in cleaning message should name the two daily focus duties.");
 const overlappingLunch = CR.normalizeRoutine({ id: "test-overlap-lunch", startTime: "13:10", type: "other", category: "급식", title: "점심시간", durationMode: "custom", duration: 50, activeDays: [5] });
 assert.equal(CR.primaryCurrentRoutine([overlappingLunch, cleaning[0]], new Date("2026-08-28T13:20:00")).id, overlappingLunch.id);
 assert.equal(CR.primaryCurrentRoutine([overlappingLunch, cleaning[0]], new Date("2026-08-28T13:45:00")).id, cleaning[0].id, "Cleaning must take top-card priority while it overlaps lunch.");
@@ -96,7 +97,11 @@ assert.equal(dismissal.length, 1, "The built-in dismissal routine must not be du
 assert.equal(dismissal[0].id, "builtin-dismissal-6");
 assert.equal(dismissal[0].startTime, "14:40", "Six periods should dismiss at 14:40.");
 assert.equal(dismissal[0].duration, 1);
-assert.equal(CR.preAlertFor(dismissal[0]), 2);
+assert.equal(dismissal[0].preAlertMode, "off", "Generated dismissal must explicitly disable advance notice.");
+assert.equal(CR.preAlertFor(dismissal[0]), null, "Dismissal must alert only at its scheduled start.");
+assert.equal(CR.preAlertFor({ ...dismissal[0], preAlertMode: "default" }), null, "Previously saved dismissal schedules must not alert two minutes early.");
+assert.equal(CR.preAlertFor({ ...dismissal[0], preAlertMode: "custom", preAlertMinutes: 5 }), null, "Dismissal must not use a custom advance notice either.");
+assert.equal(CR.normalizeRoutine({ ...dismissal[0], preAlertMode: "default" }).preAlertMode, "off", "Old dismissal data must display advance notice as disabled.");
 assert.equal(CR.isDismissalRoutine(dismissal[0]), true);
 
 CR.setSettings({ ...CR.getSettings(), periodCount: 5 });
@@ -124,6 +129,8 @@ assert.equal(dismissal.length, 2, "Five- and six-period weekdays need separate d
 const dismissal5 = dismissal.find(item => item.id === "builtin-dismissal-5"), dismissal6 = dismissal.find(item => item.id === "builtin-dismissal-6");
 assert.deepEqual(Array.from(dismissal5.activeDays), [1, 3, 4, 5]);
 assert.deepEqual(Array.from(dismissal6.activeDays), [2]);
+assert.equal(CR.preAlertFor(dismissal5), null);
+assert.equal(CR.preAlertFor(dismissal6), null);
 assert.equal(CR.activeOn(dismissal5, new Date("2026-08-28T13:48:00")), true, "Friday with five assigned periods must use the 13:50 dismissal.");
 assert.equal(CR.activeOn(dismissal6, new Date("2026-08-28T14:38:00")), false, "Friday must not receive the six-period dismissal alert.");
 
@@ -156,6 +163,11 @@ assert.equal(mondayAlertRoles.length, 10, "The alert should keep all regular rol
 assert.deepEqual(Array.from(mondayAlertRoles.filter(role => role.name.includes("크린토피아")), role => role.id), ["clean-mon"]);
 assert.deepEqual(Array.from(wednesdayAlertRoles.filter(role => role.name.includes("크린토피아")), role => role.id), ["clean-wed"]);
 assert.ok(mondayAlertRoles.some(role => role.id === "health"), "Non-weekday roles must remain visible in the alert.");
+const mondayCleaningRoles = CR.cleaningDutyAssignmentsForDate(new Date("2026-08-24T13:40:00"), board);
+const wednesdayCleaningRoles = CR.cleaningDutyAssignmentsForDate(new Date("2026-08-26T13:40:00"), board);
+assert.deepEqual(Array.from(mondayCleaningRoles, role => role.id), ["clean-mon", "milk"], "Cleaning alerts should lead with today's Crintopia and then milk.");
+assert.deepEqual(Array.from(wednesdayCleaningRoles, role => role.id), ["clean-wed", "milk"]);
+assert.ok(mondayCleaningRoles.every(role => role.id === "milk" || role.name.includes("크린토피아")), "Other one-person duties must stay off the cleaning alert.");
 
 const nextWeekDate = new Date(`${currentWeek}T12:00:00`);
 nextWeekDate.setDate(nextWeekDate.getDate() + 7);

@@ -11,6 +11,7 @@
     roster: "classRoutine.roster.v1",
     weeklyTimetables: "classRoutine.weeklyTimetables.v1",
     duties: "classRoutine.duties.v1",
+    seating: "classRoutine.seating.v1",
     quickTimer: "classRoutine.quickTimer.v1"
   };
   const STATE_META_KEY = "classRoutine.stateBackupAt.v1";
@@ -22,9 +23,30 @@
   });
   const PERSISTED_KEYS = new Set([
     KEYS.routines, KEYS.records, KEYS.settings, KEYS.subjects, KEYS.handoffs,
-    KEYS.memos, KEYS.roster, KEYS.weeklyTimetables, KEYS.duties
+    KEYS.memos, KEYS.roster, KEYS.weeklyTimetables, KEYS.duties, KEYS.seating
   ]);
   let stateBackupTimer = null;
+  let stateBackupRunning = false;
+  let stateBackupQueued = false;
+  let stateBackupRetryTimer = null;
+
+  function showBackupWarning(message) {
+    if (typeof document === "undefined") return;
+    const show = () => {
+      let banner = document.getElementById("storageWarning");
+      if (!banner) {
+        banner = document.createElement("aside");
+        banner.id = "storageWarning";
+        banner.className = "storage-warning";
+        banner.setAttribute("role", "alert");
+        document.body.prepend(banner);
+      }
+      banner.textContent = message;
+      banner.hidden = !message;
+    };
+    if (document.body) show();
+    else document.addEventListener("DOMContentLoaded", show, { once: true });
+  }
 
   function applyStateSnapshot(snapshot, force = false) {
     if (!snapshot?.storage || typeof snapshot.storage !== "object") return { applied: false, keys: [], savedAt: "" };
@@ -54,21 +76,51 @@
     }
   }
 
+  async function flushStateBackup() {
+    if (stateBackupRunning) { stateBackupQueued = true; return; }
+    stateBackupRunning = true;
+    let conflicts = 0;
+    try {
+      do {
+        stateBackupQueued = false;
+        const storage = {};
+        for (const key of PERSISTED_KEYS) {
+          try { const raw = localStorage.getItem(key); if (raw !== null) storage[key] = JSON.parse(raw); }
+          catch {}
+        }
+        const savedAt = new Date().toISOString();
+        try {
+          const response = await fetch("/api/state-json", { method: "PUT", headers: { "Content-Type": "application/json; charset=utf-8" }, body: JSON.stringify({ version: 1, savedAt, storage }) });
+          if (response.status === 409 && ++conflicts <= 5) {
+            stateBackupQueued = true;
+            await new Promise(resolve => setTimeout(resolve, 20));
+          } else if (!response.ok) {
+            showBackupWarning("전체 작업본 자동 저장에 실패했습니다. 데이터 폴더와 저장 상태를 확인해 주세요.");
+            clearTimeout(stateBackupRetryTimer);
+            stateBackupRetryTimer = setTimeout(scheduleStateBackup, 5000);
+            break;
+          } else {
+            const previous = localStorage.getItem(STATE_META_KEY) || "";
+            if (savedAt > previous) localStorage.setItem(STATE_META_KEY, savedAt);
+            showBackupWarning("");
+          }
+        } catch {
+          showBackupWarning("전체 작업본 자동 저장에 실패했습니다. 앱 연결 상태를 확인해 주세요.");
+          clearTimeout(stateBackupRetryTimer);
+          stateBackupRetryTimer = setTimeout(scheduleStateBackup, 5000);
+          break;
+        }
+      } while (stateBackupQueued);
+    } finally {
+      stateBackupRunning = false;
+    }
+  }
+
   function scheduleStateBackup() {
     if (!window.location || !/^https?:$/.test(window.location.protocol)) return;
     clearTimeout(stateBackupTimer);
-    stateBackupTimer = setTimeout(async () => {
-      const storage = {};
-      for (const key of PERSISTED_KEYS) {
-        try { const raw = localStorage.getItem(key); if (raw !== null) storage[key] = JSON.parse(raw); }
-        catch {}
-      }
-      const savedAt = new Date().toISOString();
-      try {
-        const response = await fetch("/api/state-json", { method: "PUT", headers: { "Content-Type": "application/json; charset=utf-8" }, body: JSON.stringify({ version: 1, savedAt, storage }) });
-        if (response.ok) localStorage.setItem(STATE_META_KEY, savedAt);
-      } catch {}
-    }, 300);
+    clearTimeout(stateBackupRetryTimer);
+    stateBackupTimer = setTimeout(flushStateBackup, 300);
   }
 
   const SCHOOL_PRESETS = {
@@ -157,6 +209,7 @@
       id: `subject-${index + 1}`,
       name,
       defaultMessage: "",
+      resourceUrl: "",
       color: SUBJECT_COLORS[index % SUBJECT_COLORS.length],
       sound: "chime",
       enabled: true,
@@ -181,9 +234,10 @@
       title: routine.title || "이름 없는 일정",
       durationMode: routine.durationMode || "default",
       duration: Number(routine.duration) || (type === "class" ? settings.classMinutes : type === "break" ? settings.breakMinutes : 10),
-      preAlertMode: routine.preAlertMode || "default",
+      preAlertMode: isDismissalRoutine(routine) ? "off" : routine.preAlertMode || "default",
       preAlertMinutes: Number.isFinite(Number(routine.preAlertMinutes)) ? Number(routine.preAlertMinutes) : settings.defaultPreAlert,
       eventMessage: routine.eventMessage ?? routine.message ?? "",
+      resourceUrl: routine.resourceUrl || "",
       sound: routine.sound || "chime",
       color: routine.color || "green",
       activeDays: Array.isArray(routine.activeDays) && routine.activeDays.length ? routine.activeDays : [1, 2, 3, 4, 5],
@@ -221,7 +275,21 @@
   function getSubjects() { return load(KEYS.subjects, defaultSubjects()); }
   function setSubjects(subjects) { save(KEYS.subjects, subjects); notify("subjects"); }
   function getRoutines() { return load(KEYS.routines, []).map(item => normalizeRoutine(item)).sort((a, b) => a.startTime.localeCompare(b.startTime)); }
-  function setRoutines(routines) { save(KEYS.routines, routines.map(item => normalizeRoutine(item))); ensureDismissalRoutine(); notify("routines"); }
+  function setRoutines(routines) {
+    const next = routines.map(item => normalizeRoutine(item));
+    const builtinIds = ["builtin-morning-0840", "builtin-morning-break-0855", "builtin-cleaning-1340"];
+    const previousIds = new Set(load(KEYS.routines, []).map(item => item.id));
+    const nextIds = new Set(next.map(item => item.id));
+    const removed = builtinIds.filter(id => previousIds.has(id) && !nextIds.has(id));
+    if (removed.length) {
+      const settings = getSettings();
+      settings.suppressedBuiltinRoutines = [...new Set([...(settings.suppressedBuiltinRoutines || []), ...removed])];
+      save(KEYS.settings, settings);
+    }
+    save(KEYS.routines, next);
+    ensureDismissalRoutine();
+    notify("routines");
+  }
   function getRecords() { return load(KEYS.records, []); }
   function setRecords(records) { save(KEYS.records, records); notify("records"); }
   function getHandoffs() { return load(KEYS.handoffs, []); }
@@ -230,6 +298,8 @@
   function setWeeklyTimetables(weeks) { save(KEYS.weeklyTimetables, weeks); ensureDismissalRoutine(); notify("weeklyTimetables"); }
   function getDutyBoard() { return load(KEYS.duties, { savedAt: "", term: "", roles: [], assignments: {} }); }
   function setDutyBoard(board) { save(KEYS.duties, board); notify("duties"); }
+  function getSeatBoard() { return load(KEYS.seating, { savedAt: "", layout: {}, options: {}, genders: {}, sameGenderRows: [], current: null, history: [] }); }
+  function setSeatBoard(board) { save(KEYS.seating, board); notify("seating"); }
   function isCleaningRoutine(routine) { return `${routine?.category || ""} ${routine?.title || ""}`.includes("청소"); }
   function isDismissalRoutine(routine) { return `${routine?.category || ""} ${routine?.title || ""}`.includes("하교"); }
   function dutyAssignments(board = getDutyBoard()) {
@@ -253,22 +323,54 @@
       return roleWeekday === null || roleWeekday === weekday;
     });
   }
+  function cleaningDutyAssignmentsForDate(value = new Date(), board = getDutyBoard()) {
+    const roles = dutyAssignmentsForDate(value, board);
+    const crintopia = roles.filter(role => String(role.name || "").includes("크린토피아"));
+    const milk = roles.filter(role => String(role.id || "").toLowerCase() === "milk" || String(role.name || "").includes("우유"));
+    return [...crintopia, ...milk.filter(role => !crintopia.some(item => item.id === role.id))];
+  }
   function durationFor(routine, settings = getSettings()) {
     if (routine.durationMode === "custom") return Number(routine.duration) || 1;
     return routine.type === "class" ? settings.classMinutes : routine.type === "break" ? settings.breakMinutes : Number(routine.duration) || 10;
   }
   function preAlertFor(routine, settings = getSettings()) {
+    if (isDismissalRoutine(routine)) return null;
     if (routine.preAlertMode === "off") return null;
     return routine.preAlertMode === "custom" ? Number(routine.preAlertMinutes) : settings.defaultPreAlert;
+  }
+  function dueAlarmPhase(routine, date = new Date(), alerted = [], settings = getSettings()) {
+    const minute = date.getHours() * 60 + date.getMinutes();
+    const start = toMinutes(routine.startTime);
+    const startGrace = Math.min(2, durationFor(routine, settings));
+    if (minute >= start && minute < start + startGrace && !alerted.includes(`${routine.id}:start`)) return "start";
+    const pre = preAlertFor(routine, settings);
+    if (pre > 0 && minute >= start - pre && minute < start && !alerted.includes(`${routine.id}:pre`)) return "pre";
+    return null;
   }
   function endTime(routine, settings = getSettings()) { return fromMinutes(toMinutes(routine.startTime) + durationFor(routine, settings)); }
   function hasEnded(routine, date = new Date(), settings = getSettings()) { return date.getHours() * 60 + date.getMinutes() >= toMinutes(routine.startTime) + durationFor(routine, settings); }
   function activeOn(routine, date = new Date()) { return routine.enabled && (!routine.weekStart || routine.weekStart === weekStartKey(date)) && routine.activeDays.includes(date.getDay()); }
+  function dismissalConflicts(items, date = new Date(), settings = getSettings()) {
+    const active = items.filter(item => activeOn(item, date));
+    return active.filter(isDismissalRoutine).flatMap(dismissal => {
+      const dismissalAt = toMinutes(dismissal.startTime);
+      return active.filter(item => item.id !== dismissal.id && (item.type === "class" || /점심|급식/.test(`${item.category} ${item.title}`)) && toMinutes(item.startTime) < dismissalAt && toMinutes(item.startTime) + durationFor(item, settings) > dismissalAt).map(overlap => ({ dismissal, overlap }));
+    });
+  }
   function primaryCurrentRoutine(items, date = new Date(), settings = getSettings()) {
     const minute = date.getHours() * 60 + date.getMinutes();
     return [...items].filter(routine => activeOn(routine, date) && toMinutes(routine.startTime) <= minute && minute < toMinutes(routine.startTime) + durationFor(routine, settings)).sort((a, b) => Number(isCleaningRoutine(b)) - Number(isCleaningRoutine(a)) || b.startTime.localeCompare(a.startTime))[0] || null;
   }
   function subjectFor(routine, subjects = getSubjects()) { return subjects.find(subject => subject.id === routine.subjectId) || null; }
+  function normalizeResourceUrl(value) {
+    try {
+      const url = new URL(String(value || "").trim());
+      return ["https:", "http:"].includes(url.protocol) && !url.username && !url.password && url.href.length <= 2048 ? url.href : "";
+    } catch { return ""; }
+  }
+  function resourceUrlFor(routine, subjects = getSubjects()) {
+    return normalizeResourceUrl(routine.resourceUrl || subjectFor(routine, subjects)?.resourceUrl || "");
+  }
   function handoffFor(routineId, date = dateKey()) { return getHandoffs().find(item => item.targetRoutineId === routineId && item.targetDate === date && !item.archived) || null; }
   function commonMessageFor(routine, settings = getSettings()) {
     const messages = settings.commonMessages || DEFAULT_SETTINGS.commonMessages;
@@ -463,12 +565,9 @@
     ];
     let changed = false;
     definitions.forEach(definition => {
+      if (settings.suppressedBuiltinRoutines?.includes(definition.id)) return;
       const index = routines.findIndex(item => item.id === definition.id);
-      if (index >= 0) {
-        const current = routines[index], next = normalizeRoutine({ ...current, ...definition, eventMessage: current.eventMessage || definition.eventMessage }, settings);
-        if (JSON.stringify(current) !== JSON.stringify(next)) { routines[index] = next; changed = true; }
-        return;
-      }
+      if (index >= 0) return;
       const duplicate = routines.some(item => item.startTime === definition.startTime && `${item.category} ${item.title}`.includes(definition.category));
       if (!duplicate) { routines.push(normalizeRoutine(definition, settings)); changed = true; }
     });
@@ -478,9 +577,10 @@
 
   function ensureCleaningRoutine() {
     const routines = getRoutines(), settings = getSettings(), builtinId = "builtin-cleaning-1340";
+    if (settings.suppressedBuiltinRoutines?.includes(builtinId)) return false;
     const builtinIndex = routines.findIndex(item => item.id === builtinId);
     if (builtinIndex >= 0) {
-      const current = routines[builtinIndex], next = normalizeRoutine({ ...current, startTime: "13:40", type: "other", category: "청소", title: "청소 시간", durationMode: "custom", duration: 10, activeDays: [1, 2, 3, 4, 5], eventMessage: current.eventMessage || "1인 1역 배정표를 확인하고 맡은 일을 시작해요." }, settings);
+      const current = routines[builtinIndex], oldDefault = "1인 1역 배정표를 확인하고 맡은 일을 시작해요.", cleaningMessage = "오늘의 크린토피아와 우유 역할을 확인하고 맡은 일을 시작해요.", next = normalizeRoutine({ ...current, eventMessage: !current.eventMessage || current.eventMessage === oldDefault ? cleaningMessage : current.eventMessage }, settings);
       if (JSON.stringify(current) !== JSON.stringify(next)) { routines[builtinIndex] = next; save(KEYS.routines, routines); return true; }
       return false;
     }
@@ -488,7 +588,7 @@
     routines.push(normalizeRoutine({
       id: builtinId, startTime: "13:40", type: "other", category: "청소", title: "청소 시간",
       durationMode: "custom", duration: 10, preAlertMode: "default", preAlertMinutes: settings.defaultPreAlert,
-      eventMessage: "1인 1역 배정표를 확인하고 맡은 일을 시작해요.", sound: "wood", color: "blue",
+      eventMessage: "오늘의 크린토피아와 우유 역할을 확인하고 맡은 일을 시작해요.", sound: "wood", color: "blue",
       activeDays: [1, 2, 3, 4, 5], enabled: true, generated: false
     }, settings));
     save(KEYS.routines, routines);
@@ -513,7 +613,7 @@
       if (!uncoveredDays.length) return [];
       return [normalizeRoutine({
         id: `builtin-dismissal-${period}`, startTime, type: "other", category: "하교", title: "하교",
-        durationMode: "custom", duration: 1, preAlertMode: "default", preAlertMinutes: settings.defaultPreAlert,
+        durationMode: "custom", duration: 1, preAlertMode: "off", preAlertMinutes: settings.defaultPreAlert,
         eventMessage: "오늘 일정이 끝났어요. 준비물을 확인하고 안전하게 하교해요.", sound: "sparkle", color: "orange",
         activeDays: uncoveredDays, enabled: true, generated: false
       }, settings)];
@@ -643,11 +743,17 @@
   function onChange(callback) { const listener = event => callback(event.detail); window.addEventListener("classroutinechange", listener); listeners.add(listener); return () => window.removeEventListener("classroutinechange", listener); }
 
   migrate();
+  if (typeof document !== "undefined") document.addEventListener("click", event => {
+    const link = event.target.closest?.("a[data-resource-link]");
+    if (!link || !window.classRoutineDesktop?.openExternal) return;
+    event.preventDefault();
+    window.classRoutineDesktop.openExternal(link.href);
+  });
   window.ClassRoutine = {
     KEYS, SCHOOL_PRESETS, DEFAULT_SETTINGS, SUBJECT_COLORS, ALLERGENS, uid, dateKey, weekStartKey, weekInfo, toMinutes, fromMinutes, quickTimerRemaining, formatCountdown, normalizeAllergenCodes, allergenNames, mealWarnings,
     getSettings, setSettings, getSubjects, setSubjects, getRoutines, setRoutines, getRecords, setRecords,
-    getHandoffs, setHandoffs, getWeeklyTimetables, setWeeklyTimetables, getDutyBoard, setDutyBoard, dutyAssignments, dutyAssignmentsForDate, dutyBoardFromCsv,
-    durationFor, preAlertFor, endTime, hasEnded, activeOn, primaryCurrentRoutine, subjectFor, commonMessageFor, messagesFor, isCleaningRoutine, isDismissalRoutine, activateSound, soundTiming, stopSound, effectiveSound, playSound,
+    getHandoffs, setHandoffs, getWeeklyTimetables, setWeeklyTimetables, getDutyBoard, setDutyBoard, getSeatBoard, setSeatBoard, dutyAssignments, dutyAssignmentsForDate, cleaningDutyAssignmentsForDate, dutyBoardFromCsv,
+    durationFor, preAlertFor, dueAlarmPhase, endTime, hasEnded, activeOn, dismissalConflicts, primaryCurrentRoutine, subjectFor, normalizeResourceUrl, resourceUrlFor, commonMessageFor, messagesFor, isCleaningRoutine, isDismissalRoutine, activateSound, soundTiming, stopSound, effectiveSound, playSound,
     nextClassAfter, generateSchedule, materializeWeek, ensureWeekRoutines, ensureMorningRoutines, ensureCleaningRoutine, ensureDismissalRoutine, weeklyTimetablesFromCsv, weeklyTimetablesCsv, normalizeRoutine, restoreFolderState, notify, onChange, load, save
   };
   syncFolderTimetables();

@@ -46,6 +46,12 @@ function startCountdown(routine, now = new Date()) {
 }
 function updateAlertTimes() {
   if (!activeAlert) return;
+  const currentMinute = new Date().getHours() * 60 + new Date().getMinutes();
+  const startMinute = CR.toMinutes(activeAlert.routine.startTime);
+  if (activeAlert.phase === "pre" ? currentMinute >= startMinute : currentMinute >= startMinute + CR.durationFor(activeAlert.routine, settings)) {
+    closeAlert();
+    return;
+  }
   const now = new Date(), state = startCountdown(activeAlert.routine, now);
   $("#alertCurrentTime").textContent = liveTime(now);
   $("#alertTime").textContent = activeAlert.routine.startTime;
@@ -66,23 +72,41 @@ function renderFeatured() {
   $("#mainMessage").textContent = messages.event || messages.subject || (isCurrent ? "집중해서 함께해요." : "미리 준비해 주세요.");
   const notes = [["이전 수업 메모", messages.handoff], ["추가 안내", messages.event && messages.subject ? messages.subject : ""]].filter(([, value]) => value);
   $("#messageGrid").innerHTML = notes.map(([label, value]) => `<div class="message-note"><b>${label}</b>${escapeHtml(value)}</div>`).join("");
+  const resourceUrl = CR.resourceUrlFor(featured, subjects);
+  if (resourceUrl) $("#messageGrid").insertAdjacentHTML("beforeend", `<a class="resource-link" data-resource-link href="${escapeHtml(resourceUrl)}" target="_blank" rel="noopener noreferrer">수업 도구 열기 ↗</a>`);
   $("#countdownLabel").textContent = isCurrent ? "남은 시간" : "시작까지";
   $("#countdown").textContent = isCurrent ? `${Math.max(0, end - minute)}분` : `${Math.max(0, start - minute)}분`;
   const progress = isCurrent ? (minute - start) / Math.max(1, duration) * 100 : next ? Math.max(0, Math.min(100, 100 - (start - minute) / 60 * 100)) : 0;
   $("#progressBar").style.width = `${Math.max(0, Math.min(100, progress))}%`;
 }
-function renderSchedule() { const list = todayRoutines(), minute = new Date().getHours() * 60 + new Date().getMinutes(); $("#daySummary").textContent = `${list.length}개의 일정`; $("#emptyDay").hidden = list.length > 0; $("#schedule").innerHTML = list.map(routine => { const subject = subjectOf(routine), state = stateAt(routine, minute), color = COLORS[routine.color] || subject?.color || COLORS.green; return `<article class="schedule-item ${state}" style="--row:${color}"><time>${routine.startTime}</time><i class="timeline-dot"></i><div class="schedule-copy"><small>${escapeHtml(routine.category)}</small><strong>${escapeHtml(titleOf(routine))}</strong></div><span>${CR.durationFor(routine, settings)}분</span></article>`; }).join(""); }
+function isLunchRoutine(routine) { return /점심|급식/.test(`${routine?.title || ""} ${routine?.category || ""}`); }
+function mealMenuText() { const meal = dailyInfo?.meal; return meal?.status === "ready" && meal.dishes?.length ? meal.dishes.map(dish => dish.name).join(" · ") : ""; }
+function renderSchedule() { const list = todayRoutines(), minute = new Date().getHours() * 60 + new Date().getMinutes(); $("#daySummary").textContent = `${list.length}개의 일정`; $("#emptyDay").hidden = list.length > 0; $("#schedule").innerHTML = list.map(routine => { const subject = subjectOf(routine), state = stateAt(routine, minute), color = COLORS[routine.color] || subject?.color || COLORS.green, lunchMenu = isLunchRoutine(routine) ? mealMenuText() : ""; return `<article class="schedule-item ${state}" style="--row:${color}"><time>${routine.startTime}</time><i class="timeline-dot"></i><div class="schedule-copy"><small>${escapeHtml(routine.category)}</small><strong>${escapeHtml(titleOf(routine))}</strong>${lunchMenu ? `<p class="schedule-meal-menu">${escapeHtml(lunchMenu)}</p>` : ""}</div><span>${CR.durationFor(routine, settings)}분</span></article>`; }).join(""); }
+function renderStudentMealDetail() {
+  const meal = dailyInfo?.meal || {}, dishes = Array.isArray(meal.dishes) ? meal.dishes : [];
+  $("#studentMealLargeTitle").textContent = meal.status === "ready" ? (meal.mealName || "오늘의 급식") : "오늘 급식 안내";
+  $("#studentMealLargeMeta").textContent = meal.status === "ready" ? [meal.calories, "맛있고 안전하게 먹어요"].filter(Boolean).join(" · ") : (meal.message || "선생님과 오늘 식단을 확인해요.");
+  $("#studentMealLargeDishes").innerHTML = dishes.length ? dishes.map((dish, index) => {
+    const allergy = (dish.allergenCodes || []).map(code => `${code} ${CR.ALLERGENS[code] || ""}`.trim()).join(" · ");
+    return `<article class="student-meal-large-dish"><i>${index + 1}</i><div><h3>${escapeHtml(dish.name)}</h3>${allergy ? `<p>${escapeHtml(allergy)}</p>` : ""}</div></article>`;
+  }).join("") : `<div class="student-meal-large-empty">${escapeHtml(meal.message || "표시할 급식 메뉴가 없어요.")}</div>`;
+}
+function openStudentMeal() { renderStudentMealDetail(); $("#studentMealLayer").hidden = false; }
+function closeStudentMeal() { $("#studentMealLayer").hidden = true; $("#studentMealCard").focus(); }
 function renderDailyInfo() {
   if (!dailyInfo) return;
   const meal = dailyInfo.meal || {}, weather = dailyInfo.weather || {};
   $("#studentMealTitle").textContent = meal.status === "ready" ? (meal.mealName || "오늘 급식") : "오늘 급식 안내";
-  $("#studentMealDishes").innerHTML = meal.status === "ready" ? meal.dishes.map(dish => `${escapeHtml(dish.name)}${dish.allergenCodes?.length ? ` <small>(${dish.allergenCodes.join("·")})</small>` : ""}`).join(" · ") : escapeHtml(meal.message || "선생님과 오늘 식단을 확인해요.");
-  $("#studentMealNotice").textContent = meal.status === "ready" && meal.dishes.some(dish => dish.allergenCodes?.length) ? "괄호 안 숫자는 알레르기 번호예요. 해당 학생은 배식 전에 선생님과 꼭 확인해요." : "알레르기가 있는 학생은 배식 전에 선생님과 꼭 확인해요.";
+  $("#studentMealDishes").innerHTML = meal.status === "ready" ? meal.dishes.map(dish => `<span class="student-meal-chip"><strong>${escapeHtml(dish.name)}</strong></span>`).join("") : `<span class="student-meal-message">${escapeHtml(meal.message || "선생님과 오늘 식단을 확인해요.")}</span>`;
+  $("#studentMealNotice").textContent = "카드를 누르면 메뉴와 알레르기 정보를 크게 볼 수 있어요.";
   const card = $("#studentWeatherCard"), level = weather.guidance?.level || ""; card.dataset.level = level;
   $("#studentWeatherIcon").textContent = weather.status === "ready" ? ({ "맑음":"☀", "구름많음":"☁", "흐림":"흐", "비":"우", "눈":"설" }[weather.condition] || "날") : "날";
   $("#studentOutdoorLabel").textContent = weather.status === "ready" ? weather.guidance.label : "오늘의 실외활동";
   $("#studentWeatherValues").textContent = weather.status === "ready" ? `${weather.condition} ${weather.temperature ?? "-"}℃ · 강수 ${weather.precipitationProbability ?? "-"}% · 바람 ${weather.windSpeed ?? "-"}m/s` : (weather.message || "선생님과 오늘 날씨를 확인해요.");
   $("#studentOutdoorMessage").textContent = weather.status === "ready" ? weather.guidance.message : "운동장 상태는 선생님과 함께 확인해요.";
+  renderStudentMealDetail();
+  renderSchedule();
+  if (activeAlert && isLunchRoutine(activeAlert.routine)) renderAlertMeal(activeAlert.routine);
 }
 async function loadDailyInfo() {
   try { const response = await fetch("/api/daily-info", { cache:"no-store" }); if (!response.ok) throw new Error(); dailyInfo = await response.json(); renderDailyInfo(); }
@@ -92,13 +116,49 @@ function renderAll() { settings = CR.getSettings(); subjects = CR.getSubjects();
 
 function playSound(type = "chime") { CR.playSound(type); }
 function activateSound() { CR.activateSound(); $("#soundHint").classList.add("ready"); }
-function dutyBoardHtml() { const roles = CR.dutyAssignmentsForDate(new Date()); return roles.length ? roles.map(role => { const names = role.students.map(student => student ? `<span><b>${escapeHtml(student.number)}번</b>${escapeHtml(student.name)}</span>` : `<span class="empty-duty">미배정</span>`).join(""); return `<article class="duty-alert-card" data-color="${escapeHtml(role.color)}"><strong>${escapeHtml(role.name)}</strong><div>${names}</div></article>`; }).join("") : `<div class="duty-board-empty">1인 1역 배정표가 아직 없어요. 선생님과 역할을 확인해요.</div>`; }
-function showAlert(routine, phase) { const messages = CR.messagesFor(routine), subject = subjectOf(routine), cleaning = CR.isCleaningRoutine(routine); clearTimeout(alertTimer); activeAlert = { routine, phase }; $("#alertLayer").classList.toggle("cleaning-alert", cleaning); $("#alertBadge").textContent = phase === "pre" ? `${CR.preAlertFor(routine, settings)}분 전 알림` : "지금 시작해요"; updateAlertTimes(); $("#alertSubject").textContent = cleaning ? "우리 반 1인 1역" : subject?.name || routine.category; $("#alertTitle").textContent = routine.title; const rows = [["과목 안내", messages.subject], ["일정 안내", messages.event], ["이전 수업 메모", messages.handoff]].filter(([, value]) => value); $("#alertMessages").innerHTML = rows.length ? rows.map(([label, value]) => `<div class="alert-message"><b>${label}</b>${escapeHtml(value)}</div>`).join("") : `<div class="alert-message">${phase === "pre" ? "다음 일정을 준비해 주세요." : "자, 함께 시작해 볼까요?"}</div>`; $("#dutyAlertBoard").hidden = !cleaning; $("#dutyAlertBoard").innerHTML = cleaning ? dutyBoardHtml() : ""; $("#alertLayer").hidden = false; playSound(routine.sound); if (phase === "start") window.classRoutineDesktop?.notifyRoutine({ id: routine.id, title: titleOf(routine), time: routine.startTime, phase, body: `${routine.startTime} · ${messages.event || messages.handoff || messages.subject || "시작할 시간이에요."}` }); const seconds = cleaning ? Math.max(30, Number(settings.alertDisplaySeconds) || 0) : Number(settings.alertDisplaySeconds); if (seconds > 0) alertTimer = setTimeout(closeAlert, seconds * 1000); }
+function dutyBoardHtml() { const roles = CR.cleaningDutyAssignmentsForDate(new Date()); return roles.length ? roles.map(role => { const names = role.students.map(student => student ? `<span><b>${escapeHtml(student.number)}번</b>${escapeHtml(student.name)}</span>` : `<span class="empty-duty">미배정</span>`).join(""), primary = String(role.name || "").includes("크린토피아"); return `<article class="duty-alert-card ${primary ? "primary-duty" : "support-duty"}" data-color="${escapeHtml(role.color)}"><strong>${escapeHtml(role.name)}</strong><div>${names}</div></article>`; }).join("") : `<div class="duty-board-empty">오늘의 크린토피아와 우유 역할이 아직 배정되지 않았어요.</div>`; }
+function renderAlertMeal(routine) {
+  const board = $("#alertMealBoard"), meal = dailyInfo?.meal || {}, dishes = Array.isArray(meal.dishes) ? meal.dishes : [], lunch = isLunchRoutine(routine);
+  board.hidden = !lunch;
+  if (!lunch) return;
+  $("#alertMealMeta").textContent = meal.status === "ready" ? [meal.mealName, meal.calories].filter(Boolean).join(" · ") : "급식 연결 확인";
+  $("#alertMealDishes").innerHTML = dishes.length ? dishes.map(dish => { const allergy = (dish.allergenCodes || []).map(code => `${code} ${CR.ALLERGENS[code] || ""}`.trim()).join(" · "); return `<article><b>${escapeHtml(dish.name)}</b>${allergy ? `<span>${escapeHtml(allergy)}</span>` : ""}</article>`; }).join("") : `<p>${escapeHtml(meal.message || "표시할 급식 메뉴가 없어요.")}</p>`;
+}
+function showAlert(routine, phase) {
+  const messages = CR.messagesFor(routine), subject = subjectOf(routine), cleaning = CR.isCleaningRoutine(routine), lunch = isLunchRoutine(routine);
+  clearTimeout(alertTimer);
+  activeAlert = { routine, phase };
+  $("#alertLayer").classList.toggle("cleaning-alert", cleaning);
+  $("#alertLayer").classList.toggle("lunch-alert", lunch);
+  $("#alertBadge").textContent = phase === "pre" ? `${CR.preAlertFor(routine, settings)}분 전 알림` : "지금 시작해요";
+  updateAlertTimes();
+  $("#alertSubject").textContent = cleaning ? "오늘의 청소 역할" : subject?.name || routine.category;
+  $("#alertTitle").textContent = routine.title;
+  const rows = [["과목 안내", messages.subject], ["일정 안내", messages.event], ["이전 수업 메모", messages.handoff]].filter(([, value]) => value);
+  $("#alertMessages").innerHTML = rows.length ? rows.map(([label, value]) => `<div class="alert-message"><b>${label}</b>${escapeHtml(value)}</div>`).join("") : `<div class="alert-message">${phase === "pre" ? "다음 일정을 준비해 주세요." : "자, 함께 시작해 볼까요?"}</div>`;
+  const resourceUrl = CR.resourceUrlFor(routine, subjects);
+  if (resourceUrl) $("#alertMessages").insertAdjacentHTML("beforeend", `<a class="resource-link" data-resource-link href="${escapeHtml(resourceUrl)}" target="_blank" rel="noopener noreferrer">수업 도구 열기 ↗</a>`);
+  renderAlertMeal(routine);
+  $("#dutyAlertBoard").hidden = !cleaning;
+  $("#dutyAlertBoard").innerHTML = cleaning ? dutyBoardHtml() : "";
+  $("#alertLayer").hidden = false;
+  playSound(routine.sound);
+  const now = new Date();
+  if (phase === "start" && now.getHours() * 60 + now.getMinutes() === CR.toMinutes(routine.startTime)) window.classRoutineDesktop?.notifyRoutine({ id: routine.id, title: titleOf(routine), time: routine.startTime, phase, body: `${routine.startTime} · ${messages.event || messages.handoff || messages.subject || "시작할 시간이에요."}` });
+  const seconds = cleaning ? Math.max(30, Number(settings.alertDisplaySeconds) || 0) : Number(settings.alertDisplaySeconds);
+  if (seconds > 0) alertTimer = setTimeout(closeAlert, seconds * 1000);
+}
 function closeAlert() { clearTimeout(alertTimer); CR.stopSound(); $("#alertLayer").hidden = true; activeAlert = null; }
-function checkAlarms() { const now = new Date(), minute = now.getHours() * 60 + now.getMinutes(), key = `classRoutine.alerted.v3.${CR.dateKey()}`, alerted = CR.load(key, []); for (const routine of todayRoutines()) { const pre = CR.preAlertFor(routine, settings), phases = []; if (pre !== null && minute === CR.toMinutes(routine.startTime) - pre) phases.push("pre"); if (minute === CR.toMinutes(routine.startTime)) phases.push("start"); const phase = phases.find(value => !alerted.includes(`${routine.id}:${value}`)); if (phase) { alerted.push(`${routine.id}:${phase}`); CR.save(key, alerted); showAlert(routine, phase); return; } } }
+function checkAlarms() { const now = new Date(), key = `classRoutine.alerted.v3.${CR.dateKey()}`, alerted = CR.load(key, []); for (const routine of todayRoutines()) { const phase = CR.dueAlarmPhase(routine, now, alerted, settings); if (phase) { alerted.push(`${routine.id}:${phase}`); CR.save(key, alerted); showAlert(routine, phase); return; } } }
 function checkDraw() { const result = CR.load("classRoutine.drawResult", null); if (!result || Date.now() - Number(result.at) > 15000 || checkDraw.last === result.at) return; checkDraw.last = result.at; clearTimeout(drawTimer); $("#drawName").textContent = result.name; $("#drawNumber").textContent = `${result.number}번`; $("#drawLayer").hidden = false; playSound("sparkle"); drawTimer = setTimeout(() => $("#drawLayer").hidden = true, 6500); }
 
 $("#closeAlert").onclick = closeAlert;
+$("#studentMealCard").onclick = openStudentMeal;
+$("#studentMealCard").onkeydown = event => { if (!["Enter", " "].includes(event.key)) return; event.preventDefault(); openStudentMeal(); };
+$("#closeStudentMeal").onclick = closeStudentMeal;
+$("#confirmStudentMeal").onclick = closeStudentMeal;
+$("#studentMealLayer").onclick = event => { if (event.target === event.currentTarget) closeStudentMeal(); };
+document.addEventListener("keydown", event => { if (event.key === "Escape" && !$("#studentMealLayer").hidden) closeStudentMeal(); });
 $("#drawLayer").onclick = () => $("#drawLayer").hidden = true;
 $("#studentTimerMinimize").onclick = () => { const timer = CR.load(CR.KEYS.quickTimer, null); studentTimerDismissedId = timer?.id || null; $("#studentTimerLayer").hidden = true; };
 $("#soundButton").onclick = () => { settings.sound = !settings.sound; CR.setSettings(settings); activateSound(); if (settings.sound) playSound(); };

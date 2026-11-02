@@ -13,6 +13,7 @@ let selectedWeek = CR.weekStartKey();
 let timetableCsvHandle = null;
 let timetableFolderStorage = false;
 let soundTestTimer = null;
+let pendingTimetableImport = null;
 
 function toast(message) {
   const element = $("#settingsToast");
@@ -87,7 +88,7 @@ function renderSubjects() {
     <article class="subject-card ${subject.enabled ? "" : "disabled"}" style="--subject-color:${COLORS[subject.color] || COLORS.green}" data-id="${subject.id}">
       <header><h3>${escapeHtml(subject.name)}</h3><button type="button" aria-label="${escapeHtml(subject.name)} 수정">•••</button></header>
       <p>${escapeHtml(subject.defaultMessage || "기본 안내 메시지가 없습니다.")}</p>
-      <small>${subject.enabled ? "사용 중" : "사용 안 함"} · 공통 알림음 적용</small>
+      <small>${subject.enabled ? "사용 중" : "사용 안 함"} · ${CR.normalizeResourceUrl(subject.resourceUrl) ? "기본 수업 링크 있음" : "수업 링크 없음"} · 공통 알림음 적용</small>
     </article>`).join("");
 }
 
@@ -289,6 +290,7 @@ function renderTimetable() {
     $("#timetableGrid").innerHTML = `<div class="timetable-empty">운영 요일을 한 개 이상 선택해 주세요.</div>`;
     $("#timetableSummary").textContent = "운영 요일 없음";
     $("#applyTimetable").disabled = true;
+    $("#timetableConflict").hidden = true;
     return;
   }
   const options = subjects.filter(subject => subject.enabled).map(subject => `<option value="${subject.id}">${escapeHtml(subject.name)}</option>`).join("");
@@ -308,6 +310,7 @@ function renderTimetable() {
   const assigned = $$(".tt-cell select", $("#timetableGrid")).filter(select => select.value).length;
   $("#timetableSummary").textContent = assigned ? `${days.length}일 · ${assigned}개 수업 배정` : "과목 배정 전";
   $("#applyTimetable").disabled = !assigned;
+  renderTimetableConflict(draft, timetable, selectedWeek);
 }
 
 function styleTimetableCell(cell) {
@@ -323,6 +326,114 @@ function collectTimetableGrid() {
     next[cell.dataset.day][cell.dataset.period] = $("select", cell).value;
   });
   return next;
+}
+
+function importedTimetableLessonCount(table) {
+  return Object.values(table || {}).reduce((sum, day) => sum + Object.values(day || {}).filter(Boolean).length, 0);
+}
+
+function importedWeekLabel(weekStart, weekEnd) {
+  return `${String(weekStart).replaceAll("-", ".")} — ${String(weekEnd).replaceAll("-", ".")}`;
+}
+
+function renderTimetableImport(file, imported) {
+  const existingLessons = importedTimetableLessonCount(weeklyTimetables[imported.weekStart]?.timetable);
+  const weekInfo = CR.weekInfo(imported.weekStart);
+  const ignoredText = imported.ignored.length ? `휴일 표시 ${imported.ignored.length}칸 제외` : "휴일 표시 없음";
+  $("#timetableImportSummary").innerHTML = `
+    <article><span>저장 주차</span><b>${escapeHtml(`${weekInfo.year}년 ${weekInfo.month}월 ${weekInfo.monthWeek}주차`)}</b><small>${escapeHtml(importedWeekLabel(imported.weekStart, imported.weekEnd))}</small></article>
+    <article><span>인식 결과</span><b>${imported.lessonCount}개 수업 · 최대 ${imported.maxPeriod}교시</b><small>${escapeHtml(imported.classLabel || file.name)} · ${escapeHtml(ignoredText)}</small></article>
+    <article class="${existingLessons ? "warning" : ""}"><span>저장 상태</span><b>${existingLessons ? `${existingLessons}개 기존 수업 있음` : "새 주간 시간표"}</b><small>${existingLessons ? "저장하면 이 주의 기존 자동 생성 시간표를 바꿉니다." : "확인 후 이 주의 시간표로 바로 저장합니다."}</small></article>`;
+
+  const previewDays = imported.columns.filter((item, index, list) => item.day >= 1 && item.day <= 5 && list.findIndex(other => other.day === item.day) === index);
+  const head = previewDays.map(item => `<th>${DAY_LABELS[item.day]}요일<br><small>${escapeHtml(item.date.slice(5).replace("-", "."))}</small></th>`).join("");
+  let rows = "";
+  for (let period = 1; period <= imported.maxPeriod; period++) {
+    rows += `<tr><th>${period}교시</th>${previewDays.map(({ day }) => {
+      const name = imported.table[day]?.[period] || "";
+      return `<td class="${name ? "" : "empty"}">${escapeHtml(name || "—")}</td>`;
+    }).join("")}</tr>`;
+  }
+  $("#timetableImportPreview").innerHTML = `<table><thead><tr><th>교시</th>${head}</tr></thead><tbody>${rows}</tbody></table>`;
+
+  const subjectOptions = subjects.map(subject => `<option value="${escapeHtml(subject.id)}">${escapeHtml(subject.name)}${subject.enabled ? "" : " · 사용 안 함"}</option>`).join("");
+  $("#timetableImportMappings").innerHTML = imported.subjects.map((name, index) => {
+    const matched = SchoolTimetableImport.findSubject(name, subjects);
+    return `<label class="timetable-import-map-row"><b title="${escapeHtml(name)}">${escapeHtml(name)}</b><i>→</i><select data-import-subject="${index}" aria-label="${escapeHtml(name)} 과목 연결"><option value="__new__">‘${escapeHtml(name)}’ 새 과목으로 추가</option>${subjectOptions}<option value="__skip__">가져오지 않음</option></select></label>`;
+  }).join("");
+  imported.subjects.forEach((name, index) => {
+    const matched = SchoolTimetableImport.findSubject(name, subjects), select = $(`[data-import-subject="${index}"]`);
+    select.value = matched?.id || "__new__";
+  });
+  $("#applySchoolTimetable").textContent = existingLessons ? "이 주 시간표 덮어쓰기" : "이 주 시간표로 저장";
+}
+
+async function previewSchoolTimetable(file) {
+  const button = $("#importSchoolTimetable");
+  button.disabled = true;
+  button.textContent = "XLSX 읽는 중…";
+  try {
+    const imported = await SchoolTimetableImport.parseFile(file);
+    pendingTimetableImport = { file, imported };
+    renderTimetableImport(file, imported);
+    $("#timetableImportDialog").showModal();
+  } catch (error) {
+    pendingTimetableImport = null;
+    toast(error.message || "학사 시간표 파일을 읽지 못했어요.");
+  } finally {
+    button.disabled = false;
+    button.textContent = "학사 시간표 XLSX 가져오기";
+  }
+}
+
+async function applySchoolTimetable(event) {
+  event.preventDefault();
+  if (!pendingTimetableImport) return;
+  const { imported } = pendingTimetableImport, targetWeek = imported.weekStart;
+  const existingLessons = importedTimetableLessonCount(weeklyTimetables[targetWeek]?.timetable);
+  if (existingLessons && !confirm(`${importedWeekLabel(targetWeek, imported.weekEnd)}에 이미 ${existingLessons}개 수업이 저장되어 있습니다.\n학사 시간표 내용으로 덮어쓸까요?\n직접 추가한 일정은 유지됩니다.`)) return;
+
+  const subjectIds = new Map(), newSubjects = [];
+  imported.subjects.forEach((name, index) => {
+    const value = $(`[data-import-subject="${index}"]`).value;
+    if (value === "__skip__") return;
+    if (value !== "__new__") { subjectIds.set(name, value); return; }
+    const existing = SchoolTimetableImport.findSubject(name, [...subjects, ...newSubjects]);
+    if (existing) { subjectIds.set(name, existing.id); return; }
+    const created = { id: CR.uid(), name: name.slice(0, 20), defaultMessage: `${name} 수업을 준비해요.`.slice(0, 160), color: ["green", "orange", "blue", "yellow"][(subjects.length + newSubjects.length) % 4], enabled: true, builtin: false };
+    newSubjects.push(created);
+    subjectIds.set(name, created.id);
+  });
+  if (newSubjects.length) {
+    subjects = [...subjects, ...newSubjects];
+    CR.setSubjects(subjects);
+  }
+
+  const table = {};
+  Object.entries(imported.table).forEach(([day, periods]) => {
+    Object.entries(periods || {}).forEach(([period, name]) => {
+      const subjectId = subjectIds.get(name);
+      if (!subjectId) return;
+      table[day] ||= {};
+      table[day][period] = subjectId;
+    });
+  });
+  const lessonCount = importedTimetableLessonCount(table);
+  if (!lessonCount) return toast("가져올 과목을 한 개 이상 연결해 주세요.");
+  const activeDays = Object.keys(table).map(Number).filter(day => Object.values(table[day] || {}).some(Boolean)).sort((a, b) => a - b);
+  const periodCount = Math.max(...Object.values(table).flatMap(day => Object.keys(day || {}).map(Number)), 1);
+  const draft = { ...collectBaseSettings(), activeDays, periodCount, timetable: table };
+  const generated = buildTimetableRoutines(draft, table, targetWeek);
+  if (!generated.some(item => item.type === "class")) return toast("시간표에서 수업 일정을 만들지 못했어요.");
+  if (targetWeek === CR.weekStartKey()) { settings = draft; CR.setSettings(settings); }
+  replaceGeneratedForWeek(generated, targetWeek);
+  await saveWeekArchive(draft, targetWeek, table);
+  $("#timetableImportDialog").close();
+  pendingTimetableImport = null;
+  $("#schoolTimetableFile").value = "";
+  renderSubjects();
+  selectWeek(targetWeek);
+  toast(`${importedWeekLabel(targetWeek, imported.weekEnd)} 시간표 ${lessonCount}개 수업을 저장했어요.`);
 }
 
 function buildTimetableRoutines(draft, table, weekStart = selectedWeek) {
@@ -354,8 +465,33 @@ function buildTimetableRoutines(draft, table, weekStart = selectedWeek) {
   return [...merged.values()].map(routine => ({ ...routine, activeDays: [...new Set(routine.activeDays)].sort((a, b) => a - b) }));
 }
 
+function timetableConflicts(draft, table, weekStart = selectedWeek) {
+  const generated = buildTimetableRoutines(draft, table, weekStart);
+  return draft.activeDays.flatMap(day => {
+    const filled = Object.entries(table[day] || {}).filter(([, subjectId]) => subjectId).map(([period]) => Number(period));
+    const lastPeriod = filled.length ? Math.max(...filled) : 0;
+    const dismissalTime = { 5: "13:50", 6: "14:40" }[lastPeriod];
+    if (!dismissalTime) return [];
+    const dismissal = CR.normalizeRoutine({ id: `preview-dismissal-${day}`, startTime: dismissalTime, type: "other", category: "하교", title: "하교", durationMode: "custom", duration: 1, activeDays: [day], enabled: true, weekStart }, draft);
+    const date = new Date(`${weekStart}T12:00:00`);
+    date.setDate(date.getDate() + (Number(day) + 6) % 7);
+    return CR.dismissalConflicts([...generated, dismissal], date, draft).map(conflict => ({ ...conflict, day }));
+  });
+}
+
+function renderTimetableConflict(draft, table, weekStart) {
+  const conflicts = timetableConflicts(draft, table, weekStart), notice = $("#timetableConflict");
+  notice.hidden = !conflicts.length;
+  if (conflicts.length) {
+    const first = conflicts[0];
+    notice.textContent = `시간 확인: ${DAY_LABELS[first.day]}요일 ${first.dismissal.startTime} 하교가 ${first.overlap.startTime}–${CR.endTime(first.overlap, draft)} ${first.overlap.title} 중에 있습니다. ${conflicts.length > 1 ? `외 ${conflicts.length - 1}건. ` : ""}점심 길이나 일과 시간을 조정해 주세요.`;
+  }
+  return conflicts;
+}
+
 function renderPreview() {
   $("#applySchedule").disabled = !preview.length;
+  renderTimetableConflict(collectBaseSettings(), timetable, selectedWeek);
   if (!preview.length) return;
   $("#schedulePreview").innerHTML = preview.map((routine, index) => {
     const isClass = routine.type === "class";
@@ -369,6 +505,7 @@ function openSubject(subject = null) {
   $("#subjectDialogTitle").textContent = subject ? "과목 설정" : "새 과목 추가";
   $("#subjectName").value = subject?.name || "";
   $("#subjectMessage").value = subject?.defaultMessage || "";
+  $("#subjectResourceUrl").value = subject?.resourceUrl || "";
   $(`input[name=subjectColor][value=${subject?.color || "green"}]`).checked = true;
   $("#subjectEnabled").checked = subject?.enabled !== false;
   $("#deleteSubject").hidden = !subject;
@@ -378,7 +515,9 @@ function openSubject(subject = null) {
 function saveSubject(event) {
   event.preventDefault();
   const id = $("#subjectId").value;
-  const subject = { id: id || CR.uid(), name: $("#subjectName").value.trim(), defaultMessage: $("#subjectMessage").value.trim(), color: $("input[name=subjectColor]:checked").value, enabled: $("#subjectEnabled").checked, builtin: false };
+  const rawUrl = $("#subjectResourceUrl").value.trim();
+  if (rawUrl && !CR.normalizeResourceUrl(rawUrl)) return toast("수업 링크는 http 또는 https 주소로 입력해 주세요.");
+  const subject = { id: id || CR.uid(), name: $("#subjectName").value.trim(), defaultMessage: $("#subjectMessage").value.trim(), resourceUrl: CR.normalizeResourceUrl(rawUrl), color: $("input[name=subjectColor]:checked").value, enabled: $("#subjectEnabled").checked, builtin: false };
   if (!subject.name) return;
   subjects = id ? subjects.map(item => item.id === id ? { ...item, ...subject } : item) : [...subjects, subject];
   CR.setSubjects(subjects); $("#subjectDialog").close(); renderSubjects(); renderTimetable(); toast("과목 설정을 저장했어요.");
@@ -400,6 +539,8 @@ function openRoutine(routine = null) {
   $("#settingPreAlertMode").value = value.preAlertMode;
   $("#settingPreAlertMinutes").value = CR.preAlertFor(value, settings) ?? settings.defaultPreAlert;
   $("#settingRoutineMessage").value = value.eventMessage;
+  $("#settingRoutineResourceUrl").value = value.resourceUrl || "";
+  $(`input[name=settingRoutineColor][value=${value.color}]`).checked = true;
   $$("#settingRoutineDays input").forEach(input => input.checked = value.activeDays.includes(Number(input.value)));
   $("#settingRoutineEnabled").checked = value.enabled;
   $("#deleteSettingRoutine").hidden = !routine;
@@ -420,7 +561,9 @@ function saveRoutine(event) {
   event.preventDefault();
   const id = $("#settingRoutineId").value, old = routines.find(item => item.id === id);
   const type = $("#settingRoutineType").value;
-  const routine = CR.normalizeRoutine({ ...old, id: id || CR.uid(), startTime: $("#settingRoutineStart").value, type, subjectId: type === "class" ? $("#settingRoutineSubject").value : "", title: $("#settingRoutineName").value.trim(), category: $("#settingRoutineCategory").value.trim() || (type === "class" ? "수업" : type === "break" ? "쉬는 시간" : "기타"), durationMode: $("#settingDurationMode").value, duration: Number($("#settingDuration").value), preAlertMode: $("#settingPreAlertMode").value, preAlertMinutes: Number($("#settingPreAlertMinutes").value), eventMessage: $("#settingRoutineMessage").value.trim(), activeDays: $$("#settingRoutineDays input:checked").map(input => Number(input.value)), enabled: $("#settingRoutineEnabled").checked, generated: old?.generated || false });
+  const rawUrl = $("#settingRoutineResourceUrl").value.trim();
+  if (rawUrl && !CR.normalizeResourceUrl(rawUrl)) return toast("일정 링크는 http 또는 https 주소로 입력해 주세요.");
+  const routine = CR.normalizeRoutine({ ...old, id: id || CR.uid(), startTime: $("#settingRoutineStart").value, type, subjectId: type === "class" ? $("#settingRoutineSubject").value : "", title: $("#settingRoutineName").value.trim(), category: $("#settingRoutineCategory").value.trim() || (type === "class" ? "수업" : type === "break" ? "쉬는 시간" : "기타"), durationMode: $("#settingDurationMode").value, duration: Number($("#settingDuration").value), preAlertMode: $("#settingPreAlertMode").value, preAlertMinutes: Number($("#settingPreAlertMinutes").value), eventMessage: $("#settingRoutineMessage").value.trim(), resourceUrl: CR.normalizeResourceUrl(rawUrl), color: $("input[name=settingRoutineColor]:checked").value, activeDays: $$("#settingRoutineDays input:checked").map(input => Number(input.value)), enabled: $("#settingRoutineEnabled").checked, generated: old?.generated || false });
   if (!routine.title || !routine.activeDays.length) return toast("일정 이름과 반복 요일을 확인해 주세요.");
   routines = id ? routines.map(item => item.id === id ? routine : item) : [...routines, routine];
   CR.setRoutines(routines); $("#routineSettingDialog").close(); renderRoutines(); toast("일정을 저장했어요.");
@@ -635,6 +778,9 @@ $("#timetableGrid").addEventListener("click", event => {
 });
 $("#loadTimetable").addEventListener("click", () => { timetable = timetableFromRoutines(); renderTimetable(); toast("현재 수업 일정에서 과목을 불러왔어요."); });
 $("#clearTimetable").addEventListener("click", () => { timetable = {}; renderTimetable(); toast("표를 비웠어요. 적용하기 전까지 기존 일정은 유지됩니다."); });
+$("#importSchoolTimetable").addEventListener("click", () => { $("#schoolTimetableFile").value = ""; $("#schoolTimetableFile").click(); });
+$("#schoolTimetableFile").addEventListener("change", event => { const file = event.target.files?.[0]; if (file) previewSchoolTimetable(file); });
+$("#timetableImportForm").addEventListener("submit", applySchoolTimetable);
 $$('input[name=timetableSaveTarget]').forEach(input => input.addEventListener("change", renderTimetableSaveTarget));
 $("#applyTimetable").addEventListener("click", async () => {
   timetable = collectTimetableGrid();
@@ -647,7 +793,9 @@ $("#applyTimetable").addEventListener("click", async () => {
   const existingLessons = Object.values(weeklyTimetables[targetWeek]?.timetable || {}).reduce((sum, day) => sum + Object.values(day || {}).filter(Boolean).length, 0);
   const targetLabel = `${targetInfo.start.slice(5).replace("-", ".")}~${targetInfo.end.slice(5).replace("-", ".")}`;
   const overwriteLine = existingLessons ? `\n이미 저장된 ${existingLessons}개 수업을 새 편집본으로 덮어씁니다.` : "";
-  if (!confirm(`${savingAhead ? "수정한 시간표를 다음 주로 저장할까요?" : "선택한 주의 시간표를 저장할까요?"}\n저장 주간: ${targetLabel}${overwriteLine}\n자동 생성 일정 ${count}개를 교체하고 직접 추가한 일정은 유지합니다.`)) return;
+  const conflictCount = timetableConflicts(draft, timetable, targetWeek).length;
+  const conflictLine = conflictCount ? `\n주의: 하교와 수업·점심시간이 ${conflictCount}건 겹칩니다. 시간을 확인해 주세요.` : "";
+  if (!confirm(`${savingAhead ? "수정한 시간표를 다음 주로 저장할까요?" : "선택한 주의 시간표를 저장할까요?"}\n저장 주간: ${targetLabel}${overwriteLine}${conflictLine}\n자동 생성 일정 ${count}개를 교체하고 직접 추가한 일정은 유지합니다.`)) return;
   if (targetWeek === currentWeek) { settings = draft; CR.setSettings(settings); }
   replaceGeneratedForWeek(generated, targetWeek);
   await saveWeekArchive(draft, targetWeek, timetable);
@@ -656,6 +804,7 @@ $("#applyTimetable").addEventListener("click", async () => {
   toast(savingAhead ? "수정한 시간표를 다음 주에 저장했어요." : "선택한 주의 시간표를 저장했어요.");
 });
 $("#periodCount").addEventListener("change", renderTimetable);
+for (const id of ["firstStart", "classMinutes", "breakMinutes", "middleEnabled", "middleDuration", "middleCustom", "lunchEnabled", "lunchAfter", "lunchDuration"]) $("#" + id).addEventListener("change", renderTimetable);
 $$("#activeDayOptions input").forEach(input => input.addEventListener("change", renderTimetable));
 function moveSelectedWeek(days) { const date = new Date(`${selectedWeek}T12:00:00`); date.setDate(date.getDate() + days); selectWeek(date); }
 $("#previousWeek").addEventListener("click", () => moveSelectedWeek(-7));
@@ -697,7 +846,7 @@ $$('[data-test-sound]').forEach(button => button.addEventListener("click", () =>
 }));
 $("#saveAlertSettings").addEventListener("click", () => { settings = { ...collectBaseSettings(), sound: $("#soundSetting").checked, globalSound: $("#globalSound").value, soundVolume: Number($("#soundVolume").value), reducedMotion: $("#motionSetting").checked, alertDisplaySeconds: Number($("#alertSeconds").value) }; CR.setSettings(settings); selectGlobalSound(settings.globalSound, { saved: true }); document.documentElement.classList.toggle("reduce-motion", settings.reducedMotion); toast(`${soundLabel(settings.globalSound)}을 모든 일정의 알림음으로 저장했어요.`); });
 function createFullBackup() {
-  return { version: 2, exportedAt: new Date().toISOString(), settings: CR.getSettings(), subjects: CR.getSubjects(), routines: CR.getRoutines(), records: CR.getRecords(), handoffs: CR.getHandoffs(), memos: CR.load(CR.KEYS.memos, {}), roster: CR.load(CR.KEYS.roster, []), weeklyTimetables: CR.getWeeklyTimetables(), duties: CR.getDutyBoard() };
+  return { version: 4, exportedAt: new Date().toISOString(), settings: CR.getSettings(), subjects: CR.getSubjects(), routines: CR.getRoutines(), records: CR.getRecords(), handoffs: CR.getHandoffs(), memos: CR.load(CR.KEYS.memos, {}), roster: CR.load(CR.KEYS.roster, []), weeklyTimetables: CR.getWeeklyTimetables(), duties: CR.getDutyBoard(), seating: CR.getSeatBoard() };
 }
 
 function downloadBackupInBrowser(content, fileName) {
@@ -720,6 +869,7 @@ async function restoreFullBackupText(text) {
     if (Array.isArray(data.roster)) CR.save(CR.KEYS.roster, data.roster);
     if (data.weeklyTimetables && typeof data.weeklyTimetables === "object") CR.setWeeklyTimetables(data.weeklyTimetables);
     if (data.duties && typeof data.duties === "object") CR.setDutyBoard(data.duties);
+    if (data.seating && typeof data.seating === "object") CR.setSeatBoard(data.seating);
     settings = CR.getSettings(); subjects = CR.getSubjects(); routines = CR.getRoutines(); timetable = initialTimetable();
     fillBaseSettings(); renderSubjects(); renderRoutines(); renderTimetable(); renderDataCounts();
     toast("전체 백업을 복원했어요.");
@@ -793,6 +943,7 @@ $("#restoreFolderState").addEventListener("click", async event => {
 let integrationSettings = {};
 function integrationPayload() {
   return {
+    schoolName: $("#selectedSchoolName").dataset.value || "",
     neisOfficeCode: $("#neisOfficeCode").value,
     neisSchoolCode: $("#neisSchoolCode").value,
     neisApiKey: $("#neisApiKey").value,
@@ -801,14 +952,23 @@ function integrationPayload() {
     kmaApiKey: $("#kmaApiKey").value
   };
 }
+function renderSelectedSchool(value = {}) {
+  const name = value.schoolName || "", officeCode = value.officeCode || value.neisOfficeCode || "", schoolCode = value.schoolCode || value.neisSchoolCode || "";
+  $("#selectedSchoolName").dataset.value = name;
+  $("#selectedSchoolName").textContent = name || "선택한 학교 없음";
+  $("#selectedSchoolMeta").textContent = name ? [value.officeName, value.schoolType, value.address].filter(Boolean).join(" · ") || `${officeCode} · ${schoolCode}` : "검색 결과에서 학교를 선택해 주세요.";
+  $("#selectedSchool").classList.toggle("ready", Boolean(name && officeCode && schoolCode));
+}
 function renderIntegrationSettings(value = {}) {
   integrationSettings = value;
+  $("#neisSchoolSearch").value = value.schoolName || "";
   $("#neisOfficeCode").value = value.neisOfficeCode || "";
   $("#neisSchoolCode").value = value.neisSchoolCode || "";
   $("#weatherNx").value = value.weatherNx || "";
   $("#weatherNy").value = value.weatherNy || "";
   $("#neisApiKey").value = ""; $("#kmaApiKey").value = "";
-  $("#neisKeyState").textContent = value.hasNeisApiKey ? "저장됨" : "미등록 · 샘플 조회";
+  renderSelectedSchool(value);
+  $("#neisKeyState").textContent = value.hasNeisApiKey ? "저장됨" : "미등록";
   $("#kmaKeyState").textContent = value.hasKmaApiKey ? "저장됨" : "미등록";
 }
 async function loadIntegrationSettings() {
@@ -845,33 +1005,85 @@ function renderAllergyEditor() {
 function syncAllergySelection() {
   const roster = CR.load(CR.KEYS.roster, []), index = $("#allergyStudentSelect").value, student = index === "" ? null : roster[Number(index)], codes = CR.normalizeAllergenCodes(student?.allergenCodes);
   $$("#allergenOptions input").forEach(input => { input.disabled = !student; input.checked = codes.includes(input.value); });
+  $("#studentEmail").disabled = !student;
+  $("#studentGender").disabled = !student;
+  $("#studentGender").value = student?.gender || "";
+  $("#studentEmail").value = student?.email || "";
+  $("#studentEmail").classList.remove("invalid");
+  $("#studentEmailStatus").textContent = !student ? "학생을 선택하세요" : student.email ? "백업에 포함됨" : "미등록";
   $("#saveStudentAllergens").disabled = !student;
 }
 async function persistRosterFromSettings(roster) {
   const csvCell = value => `"${String(value ?? "").replaceAll('"', '""')}"`;
-  const csv = "\uFEFF" + [["번호","이름","알레르기번호"], ...roster.map(student => [student.number, student.name, CR.normalizeAllergenCodes(student.allergenCodes).join("|")])].map(row => row.map(csvCell).join(",")).join("\r\n");
+  const csv = "\uFEFF" + [["번호","이름","성별","이메일","알레르기번호"], ...roster.map(student => [student.number, student.name, student.gender || "", student.email || "", CR.normalizeAllergenCodes(student.allergenCodes).join("|")])].map(row => row.map(csvCell).join(",")).join("\r\n");
   try { await fetch("/api/roster-csv", { method:"PUT", headers:{ "Content-Type":"text/csv; charset=utf-8" }, body:csv }); } catch {}
 }
-$("#saveIntegrationSettings").addEventListener("click", async event => {
-  const button = event.currentTarget; button.disabled = true; button.textContent = "저장 중…";
+async function saveIntegrationSettings({ quiet = false } = {}) {
+  const button = $("#saveIntegrationSettings"); button.disabled = true; button.textContent = "저장 중…";
   try {
     const response = await fetch("/api/integration-settings", { method:"PUT", headers:{ "Content-Type":"application/json; charset=utf-8" }, body:JSON.stringify(integrationPayload()) });
     if (!response.ok) throw new Error();
     const result = await response.json(); renderIntegrationSettings(result.settings); await refreshDataCenter();
-    $("#integrationStatus").textContent = "연동 설정을 별도 파일에 저장했어요."; toast("급식·날씨 연동 설정을 저장했어요.");
-  } catch { $("#integrationStatus").textContent = "설치형 프로그램에서 저장해 주세요."; toast("연동 설정을 저장하지 못했어요."); }
+    if (!quiet) { $("#integrationStatus").textContent = "연동 설정을 별도 파일에 저장했어요."; toast("급식·날씨 연동 설정을 저장했어요."); }
+    return result.settings;
+  } catch { $("#integrationStatus").textContent = "설치형 프로그램에서 저장해 주세요."; if (!quiet) toast("연동 설정을 저장하지 못했어요."); return null; }
   finally { button.disabled = false; button.textContent = "연동 설정 저장"; }
-});
+}
+function chooseSchool(school) {
+  $("#neisOfficeCode").value = school.officeCode;
+  $("#neisSchoolCode").value = school.schoolCode;
+  $("#neisSchoolSearch").value = school.schoolName;
+  renderSelectedSchool(school);
+  $("#schoolSearchResults").hidden = true;
+  $("#schoolSearchStatus").textContent = `${school.schoolName}을(를) 선택했습니다. 연동 설정을 저장해 주세요.`;
+}
+function renderSchoolResults(schools) {
+  const container = $("#schoolSearchResults");
+  container.innerHTML = schools.map((school, index) => `<button class="school-result" type="button" data-school-index="${index}"><b>${escapeHtml(school.schoolName)}</b><em>${escapeHtml(school.schoolType || "학교")}</em><span>${escapeHtml([school.officeName, school.address].filter(Boolean).join(" · "))}</span></button>`).join("");
+  $$('[data-school-index]', container).forEach(button => button.addEventListener("click", () => chooseSchool(schools[Number(button.dataset.schoolIndex)])));
+  container.hidden = !schools.length;
+}
+async function findSchool() {
+  const query = $("#neisSchoolSearch").value.trim(), button = $("#searchSchoolButton");
+  if (query.length < 2) return $("#schoolSearchStatus").textContent = "학교 이름을 두 글자 이상 입력해 주세요.";
+  button.disabled = true; button.textContent = "찾는 중…"; $("#schoolSearchStatus").textContent = "나이스 학교기본정보에서 찾고 있어요."; $("#schoolSearchResults").hidden = true;
+  try {
+    const saved = await saveIntegrationSettings({ quiet:true });
+    $("#neisSchoolSearch").value = query;
+    if (!saved?.hasNeisApiKey) throw new Error("나이스 API 인증키를 먼저 입력해 주세요.");
+    const response = await fetch(`/api/school-search?q=${encodeURIComponent(query)}`, { cache:"no-store" });
+    if (!response.ok) throw new Error("학교 검색 서비스에 연결하지 못했습니다.");
+    const result = await response.json(), schools = Array.isArray(result.schools) ? result.schools : [];
+    if (result.status !== "ready") throw new Error(result.message || "일치하는 학교가 없습니다.");
+    if (schools.length === 1) chooseSchool(schools[0]);
+    else { renderSchoolResults(schools); $("#schoolSearchStatus").textContent = `${schools.length}개 학교를 찾았습니다. 지역과 주소를 확인해 선택하세요.`; }
+  } catch (error) { $("#schoolSearchStatus").textContent = error.message || "학교를 검색하지 못했습니다."; }
+  finally { button.disabled = false; button.textContent = "학교 찾기"; }
+}
+$("#saveIntegrationSettings").addEventListener("click", () => saveIntegrationSettings());
+$("#searchSchoolButton").addEventListener("click", findSchool);
+$("#neisSchoolSearch").addEventListener("keydown", event => { if (event.key === "Enter") { event.preventDefault(); findSchool(); } });
 $("#testDailyInfo").addEventListener("click", () => fetchDailyPreview(true));
 $("#allergyStudentSelect").addEventListener("change", syncAllergySelection);
 $("#saveStudentAllergens").addEventListener("click", async () => {
   const roster = CR.load(CR.KEYS.roster, []), index = $("#allergyStudentSelect").value;
   if (index === "" || !roster[Number(index)]) return toast("학생을 먼저 선택해 주세요.");
-  roster[Number(index)] = { ...roster[Number(index)], allergenCodes:$$("#allergenOptions input:checked").map(input => input.value) };
+  const email = $("#studentEmail").value.trim().toLowerCase();
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    $("#studentEmail").classList.add("invalid");
+    $("#studentEmailStatus").textContent = "형식 확인 필요";
+    return toast("학생 이메일 형식을 확인해 주세요.");
+  }
+  roster[Number(index)] = { ...roster[Number(index)], gender:$("#studentGender").value, email, allergenCodes:$$("#allergenOptions input:checked").map(input => input.value) };
   CR.save(CR.KEYS.roster, roster); CR.notify("roster"); await persistRosterFromSettings(roster); renderDataCounts();
-  toast(`${roster[Number(index)].name} 학생의 알레르기 정보를 저장했어요.`); fetchDailyPreview();
+  syncAllergySelection();
+  toast(`${roster[Number(index)].name} 학생의 성별·이메일·알레르기 정보를 저장했어요.`); fetchDailyPreview();
 });
 window.addEventListener("classroutinechange", event => { renderDataCounts(); if (event.detail?.scope === "roster") renderAllergyEditor(); });
 $$('[data-close]').forEach(button => button.addEventListener("click", () => $("#" + button.dataset.close).close()));
+
+$("#subjectMessage").closest("label").after($("#subjectResourceTemplate").content.firstElementChild.cloneNode(true));
+$("#settingRoutineMessage").closest("label").after($("#settingRoutineResourceTemplate").content.firstElementChild.cloneNode(true));
+$("#settingRoutineResourceUrl").closest("label").insertAdjacentHTML("afterend", '<fieldset><legend>표시 색상</legend><div class="colors"><input type="radio" name="settingRoutineColor" value="green" checked aria-label="초록"><input type="radio" name="settingRoutineColor" value="orange" aria-label="주황"><input type="radio" name="settingRoutineColor" value="blue" aria-label="파랑"><input type="radio" name="settingRoutineColor" value="yellow" aria-label="노랑"></div></fieldset>');
 
 timetable = initialTimetable(); fillBaseSettings(); renderSubjects(); renderRoutines(); renderWeekIdentity(); renderTimetable(); renderAllergyEditor(); loadIntegrationSettings().then(() => fetchDailyPreview()); restoreTimetableCsv(); refreshDataCenter(); document.documentElement.classList.toggle("reduce-motion", settings.reducedMotion);

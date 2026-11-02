@@ -1,0 +1,195 @@
+(function (global) {
+  "use strict";
+
+  const DAY_LABELS = { 0: "일", 1: "월", 2: "화", 3: "수", 4: "목", 5: "금", 6: "토" };
+  const NON_CLASS_PATTERN = /(개천절|한글날|광복절|삼일절|현충일|어린이날|성탄절|부처님오신날|석가탄신일|신정|설날|추석|대체공휴일|공휴일|휴업|재량휴업|학교장재량|방학|휴교)/;
+  const SUBJECT_ALIASES = new Map([
+    ["동아리활동", "동아리"],
+    ["자율활동", "자율"],
+    ["자치활동", "자치"]
+  ]);
+
+  function subjectName(value) {
+    return String(value ?? "")
+      .replace(/[\r\n]+/g, " ")
+      .replace(/\s*\([^()]*(?:교사|선생님)?\)\s*$/, "")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  function subjectKey(value) {
+    return subjectName(value).toLocaleLowerCase("ko-KR").replace(/[\s·ㆍ._-]+/g, "");
+  }
+
+  function isNonClassLabel(value) {
+    const name = subjectName(value);
+    return !name || NON_CLASS_PATTERN.test(name);
+  }
+
+  function dateFromHeader(value) {
+    const match = String(value || "").match(/(\d{4})\s*[.\-/년]\s*(\d{1,2})\s*[.\-/월]\s*(\d{1,2})/);
+    if (!match) return null;
+    const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]), 12);
+    return date.getFullYear() === Number(match[1]) && date.getMonth() === Number(match[2]) - 1 && date.getDate() === Number(match[3]) ? date : null;
+  }
+
+  function dateKey(date) {
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+  }
+
+  function mondayKey(date) {
+    const result = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 12);
+    const day = result.getDay();
+    result.setDate(result.getDate() - (day === 0 ? 6 : day - 1));
+    return dateKey(result);
+  }
+
+  function parseRows(rows) {
+    if (!Array.isArray(rows) || !rows.length) throw new Error("시간표 표를 찾지 못했습니다.");
+    let headerRow = -1;
+    for (let index = 0; index < rows.length; index++) {
+      const values = rows[index] || [];
+      const hasPeriod = values.some(value => subjectName(value) === "교시");
+      const dayCount = values.filter(value => /[월화수목금토일]요일/.test(String(value || "")) && dateFromHeader(value)).length;
+      if (hasPeriod && dayCount >= 3) { headerRow = index; break; }
+    }
+    if (headerRow < 0) throw new Error("‘교시’와 날짜가 있는 시간표 머리글을 찾지 못했습니다.");
+
+    const header = rows[headerRow] || [];
+    const periodColumn = header.findIndex(value => subjectName(value) === "교시");
+    const columns = [];
+    header.forEach((value, column) => {
+      const dayMatch = String(value || "").match(/([월화수목금토일])요일/), date = dateFromHeader(value);
+      if (!dayMatch || !date) return;
+      const day = Object.entries(DAY_LABELS).find(([, label]) => label === dayMatch[1])?.[0];
+      if (day === undefined) return;
+      columns.push({ column, day: Number(day), date: dateKey(date), label: `${dayMatch[1]}요일` });
+    });
+    if (!columns.length) throw new Error("요일별 날짜를 읽지 못했습니다.");
+    const weekStarts = [...new Set(columns.map(item => mondayKey(new Date(`${item.date}T12:00:00`))))];
+    if (weekStarts.length !== 1) throw new Error("한 파일에 서로 다른 주차의 날짜가 섞여 있습니다.");
+
+    const table = {}, ignored = [];
+    let lessonCount = 0, maxPeriod = 0;
+    for (let rowIndex = headerRow + 1; rowIndex < rows.length; rowIndex++) {
+      const row = rows[rowIndex] || [], period = Number(row[periodColumn]);
+      if (!Number.isInteger(period) || period < 1 || period > 8) continue;
+      columns.forEach(({ column, day }) => {
+        const raw = subjectName(row[column]);
+        if (!raw) return;
+        if (isNonClassLabel(raw)) { ignored.push({ day, period, value: raw }); return; }
+        table[day] ||= {};
+        table[day][period] = raw;
+        lessonCount++;
+        maxPeriod = Math.max(maxPeriod, period);
+      });
+    }
+    if (!lessonCount) throw new Error("1~8교시에서 과목을 찾지 못했습니다.");
+
+    const days = [...new Set(columns.map(item => item.day).filter(day => Object.values(table[day] || {}).some(Boolean)))].sort((a, b) => a - b);
+    const subjects = [...new Set(days.flatMap(day => Object.values(table[day] || {})))];
+    const allText = rows.flat().map(value => subjectName(value)).filter(Boolean);
+    const classLabel = allText.find(value => /\d{4}학년도.*\d+\s*학년.*\d+\s*반/.test(value)) || "";
+    return {
+      weekStart: weekStarts[0],
+      weekEnd: columns.map(item => item.date).sort().at(-1),
+      columns,
+      days,
+      table,
+      subjects,
+      lessonCount,
+      maxPeriod,
+      ignored,
+      classLabel
+    };
+  }
+
+  function findSubject(importedName, subjects) {
+    const importedKey = subjectKey(importedName);
+    const exact = (subjects || []).find(item => subjectKey(item.name) === importedKey);
+    if (exact) return exact;
+    const alias = SUBJECT_ALIASES.get(importedKey);
+    return alias ? (subjects || []).find(item => subjectKey(item.name) === subjectKey(alias)) || null : null;
+  }
+
+  async function unzip(buffer) {
+    const bytes = new Uint8Array(buffer), view = new DataView(buffer);
+    let end = -1;
+    for (let index = bytes.length - 22; index >= Math.max(0, bytes.length - 65557); index--) {
+      if (view.getUint32(index, true) === 0x06054b50) { end = index; break; }
+    }
+    if (end < 0) throw new Error("올바른 XLSX 파일이 아닙니다.");
+    const count = view.getUint16(end + 10, true), entries = new Map();
+    let position = view.getUint32(end + 16, true);
+    for (let index = 0; index < count; index++) {
+      if (view.getUint32(position, true) !== 0x02014b50) throw new Error("XLSX 압축 목록이 손상되었습니다.");
+      const method = view.getUint16(position + 10, true), size = view.getUint32(position + 20, true);
+      const nameLength = view.getUint16(position + 28, true), extraLength = view.getUint16(position + 30, true), commentLength = view.getUint16(position + 32, true);
+      const localOffset = view.getUint32(position + 42, true), name = new TextDecoder().decode(bytes.slice(position + 46, position + 46 + nameLength));
+      entries.set(name, { method, size, localOffset });
+      position += 46 + nameLength + extraLength + commentLength;
+    }
+    async function extract(name) {
+      const entry = entries.get(name);
+      if (!entry) return null;
+      const offset = entry.localOffset, nameLength = view.getUint16(offset + 26, true), extraLength = view.getUint16(offset + 28, true);
+      const start = offset + 30 + nameLength + extraLength, data = bytes.slice(start, start + entry.size);
+      if (entry.method === 0) return data;
+      if (entry.method !== 8 || typeof DecompressionStream === "undefined") throw new Error("이 XLSX 압축 방식을 읽을 수 없습니다.");
+      const stream = new Blob([data]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
+      return new Uint8Array(await new Response(stream).arrayBuffer());
+    }
+    return { extract };
+  }
+
+  function normalizedTarget(target) {
+    const parts = `xl/${String(target || "").replace(/^\//, "").replace(/^xl\//, "")}`.split("/"), result = [];
+    parts.forEach(part => { if (part === "..") result.pop(); else if (part && part !== ".") result.push(part); });
+    return result.join("/");
+  }
+
+  async function rowsFromXlsx(file) {
+    if (!file || !/\.xlsx$/i.test(file.name || "")) throw new Error("XLSX 파일을 선택해 주세요.");
+    if (file.size > 5 * 1024 * 1024) throw new Error("5MB 이하의 시간표 XLSX 파일을 선택해 주세요.");
+    const zip = await unzip(await file.arrayBuffer()), decoder = new TextDecoder();
+    const xml = bytes => {
+      if (!bytes) throw new Error("XLSX 내부 문서를 찾지 못했습니다.");
+      const document = new DOMParser().parseFromString(decoder.decode(bytes), "application/xml");
+      if (document.querySelector("parsererror")) throw new Error("XLSX 내부 문서를 해석하지 못했습니다.");
+      return document;
+    };
+    const all = (document, name) => [...document.getElementsByTagNameNS("*", name)];
+    const sharedBytes = await zip.extract("xl/sharedStrings.xml");
+    const shared = sharedBytes ? all(xml(sharedBytes), "si").map(item => all(item, "t").map(text => text.textContent || "").join("")) : [];
+    const workbook = xml(await zip.extract("xl/workbook.xml")), relations = xml(await zip.extract("xl/_rels/workbook.xml.rels"));
+    const sheet = all(workbook, "sheet")[0];
+    if (!sheet) throw new Error("첫 번째 워크시트를 찾지 못했습니다.");
+    const relationId = sheet.getAttribute("r:id") || sheet.getAttributeNS("http://schemas.openxmlformats.org/officeDocument/2006/relationships", "id");
+    const relation = all(relations, "Relationship").find(item => item.getAttribute("Id") === relationId);
+    if (!relation) throw new Error("워크시트 연결 정보를 찾지 못했습니다.");
+    const worksheet = xml(await zip.extract(normalizedTarget(relation.getAttribute("Target")))), rows = [];
+    all(worksheet, "row").forEach(row => {
+      const rowNumber = Math.max(1, Number(row.getAttribute("r")) || rows.length + 1), values = [];
+      all(row, "c").forEach(cell => {
+        const ref = cell.getAttribute("r") || "A1", letters = (ref.match(/[A-Z]+/i) || ["A"])[0].toUpperCase();
+        let column = 0;
+        for (const char of letters) column = column * 26 + char.charCodeAt(0) - 64;
+        column--;
+        const type = cell.getAttribute("t"), valueNode = all(cell, "v")[0];
+        values[column] = type === "s" && valueNode
+          ? shared[Number(valueNode.textContent)] || ""
+          : type === "inlineStr"
+            ? all(cell, "t").map(item => item.textContent || "").join("")
+            : valueNode?.textContent || "";
+      });
+      rows[rowNumber - 1] = values;
+    });
+    return rows;
+  }
+
+  async function parseFile(file) {
+    return parseRows(await rowsFromXlsx(file));
+  }
+
+  global.SchoolTimetableImport = Object.freeze({ parseFile, parseRows, subjectName, subjectKey, isNonClassLabel, findSubject });
+})(typeof window !== "undefined" ? window : globalThis);

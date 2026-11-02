@@ -236,6 +236,15 @@ if (gotLock) {
       const error = await shell.openPath(dataDirectory);
       return { ok: !error, error };
     });
+    ipcMain.handle("desktop:open-external", async (event, rawUrl) => {
+      if (!trustedSender(event)) return { ok: false, error: "untrusted" };
+      try {
+        const url = new URL(String(rawUrl || ""));
+        if (!["https:", "http:"].includes(url.protocol) || url.username || url.password) return { ok: false, error: "invalid-url" };
+        await shell.openExternal(url.href);
+        return { ok: true };
+      } catch { return { ok: false, error: "open-failed" }; }
+    });
     ipcMain.handle("desktop:save-backup", async (event, payload = {}) => {
       if (!trustedSender(event)) return { ok: false, error: "untrusted" };
       const content = String(payload.content || "");

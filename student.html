@@ -26,7 +26,7 @@
 
   <main>
     <section class="student-daily-brief" aria-label="오늘 급식과 날씨">
-      <article class="student-meal"><div class="daily-symbol">식</div><div><small>TODAY'S LUNCH</small><h2 id="studentMealTitle">오늘 급식 확인 중</h2><p id="studentMealDishes">학교 식단 정보를 불러오고 있어요.</p><b id="studentMealNotice">알레르기가 있는 학생은 배식 전에 선생님과 꼭 확인해요.</b></div></article>
+      <article class="student-meal" id="studentMealCard" tabindex="0" role="button" aria-controls="studentMealLayer" aria-label="오늘 급식을 큰 화면으로 보기"><div class="daily-symbol">식</div><div><small>TODAY'S LUNCH · 눌러서 크게 보기</small><h2 id="studentMealTitle">오늘 급식 확인 중</h2><p id="studentMealDishes">학교 식단 정보를 불러오고 있어요.</p><b id="studentMealNotice">카드를 누르면 크게 볼 수 있어요.</b></div></article>
       <article class="student-weather" id="studentWeatherCard"><div class="daily-symbol" id="studentWeatherIcon">날</div><div><small>OUTDOOR CHECK</small><h2 id="studentOutdoorLabel">날씨 확인 중</h2><p id="studentWeatherValues">기상청 예보를 불러오고 있어요.</p><b id="studentOutdoorMessage">운동장 상태는 선생님과 함께 확인해요.</b></div></article>
     </section>
     <section class="now-panel" id="nowPanel">
@@ -60,6 +60,8 @@
     </section>
   </main>
 
+  <section class="student-meal-layer" id="studentMealLayer" hidden aria-modal="true" role="dialog" aria-labelledby="studentMealLargeTitle"><div class="student-meal-sheet"><header><div><small>TODAY'S LUNCH BOARD</small><h2 id="studentMealLargeTitle">오늘의 급식</h2><p id="studentMealLargeMeta">맛있고 안전하게 먹어요</p></div><button id="closeStudentMeal" type="button" aria-label="큰 급식판 닫기">×</button></header><div class="student-meal-large-dishes" id="studentMealLargeDishes"></div><footer><b>알레르기가 있는 학생은 먹기 전에 선생님과 꼭 확인해요.</b><button id="confirmStudentMeal" type="button">급식 확인했어요</button></footer></div></section>
+
   <section class="student-timer-layer" id="studentTimerLayer" hidden role="dialog" aria-label="빠른 타이머"><div class="student-timer-card"><p>QUICK TIMER</p><span id="studentTimerDuration">5분 타이머</span><h2 id="studentTimerStatus">남은 시간</h2><strong id="studentTimerLarge">05:00</strong><div class="student-timer-progress"><i id="studentTimerProgress"></i></div><small id="studentTimerEnd">종료 예정 시각 계산 중</small><button id="studentTimerMinimize" type="button">작게 보기</button></div></section>
 
   <section class="alert-layer" id="alertLayer" hidden aria-live="assertive" aria-modal="true" role="dialog">
@@ -69,6 +71,7 @@
       <p id="alertSubject">다음 수업</p>
       <h2 id="alertTitle">준비할 시간이에요</h2>
       <div class="alert-messages" id="alertMessages"></div>
+      <section class="alert-meal-board" id="alertMealBoard" hidden><header><span>오늘의 급식</span><b id="alertMealMeta"></b></header><div class="alert-meal-dishes" id="alertMealDishes"></div><p>알레르기가 있는 학생은 배식 전에 선생님과 꼭 확인해요.</p></section>
       <div class="duty-alert-board" id="dutyAlertBoard" hidden></div>
       <button id="closeAlert" type="button">확인했어요</button>
     </div>

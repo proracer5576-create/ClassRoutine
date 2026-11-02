@@ -8,6 +8,7 @@ export const DATA_FILES = Object.freeze({
   timetable: "주간시간표_이력.csv",
   roster: "학생명렬표.csv",
   roles: "1인1역_배정.csv",
+  seating: "자리배치_이력.csv",
   records: "루틴기록.csv",
   state: "교실루틴_설정.json",
   desktop: "데스크톱설정.json",

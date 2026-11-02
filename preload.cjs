@@ -8,6 +8,9 @@ contextBridge.exposeInMainWorld("classRoutineDesktop", Object.freeze({
   openDataFolder() {
     return ipcRenderer.invoke("desktop:open-data-folder");
   },
+  openExternal(url) {
+    return ipcRenderer.invoke("desktop:open-external", url);
+  },
   saveBackup(payload) {
     return ipcRenderer.invoke("desktop:save-backup", payload);
   },

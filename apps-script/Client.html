@@ -3,14 +3,164 @@
   'use strict';
   const $ = selector => document.querySelector(selector);
   const $$ = selector => [...document.querySelectorAll(selector)];
-  const views = ['loadingView', 'errorView', 'masterView', 'teacherView', 'studentView'];
+  const views = ['loadingView', 'errorView', 'loginView', 'masterView', 'teacherView', 'studentView'];
   const roleLabels = { master: '마스터', teacher: '담임교사', student: '학생' };
+  const AUTH_TOKEN_KEY = 'classRoutine.onlineAuthToken';
   let appData = null;
   let serverOffset = 0;
   let pollTimer = null;
   let toastTimer = null;
   let editorSessionId = '';
   let serviceEditorClassId = '';
+  let preferencesEditorKey = '';
+  let scheduleWeekStart = '';
+  let scheduleClassId = '';
+  let renderedPlanKey = '';
+  let weekPlanDirty = false;
+  let subjectEditorId = '';
+  let routineEditorId = '';
+  let pendingDesktopBackup = null;
+  let dismissedTimerId = '';
+  let loginChallengeId = '';
+  let alertAudioContext = null;
+  let alertOscillators = [];
+  let activeScheduleAlertKey = '';
+  let selectedRecordRoutineId = '';
+  let seatingDraft = null;
+  let seatingRevision = -1;
+  let seatingSaving = false;
+  let selectedSeatId = '';
+  let selectedRoutineHistory = null;
+  let dutyDraft = null;
+  let dutyUpdatedAt = '';
+  let dutyDirty = false;
+  let pendingSchoolTimetable = null;
+
+  function unlockAlertAudio() {
+    try {
+      alertAudioContext ||= new (window.AudioContext || window.webkitAudioContext)();
+      if (alertAudioContext.state === 'suspended') alertAudioContext.resume().catch(() => {});
+    } catch (_) { /* The visual alert still works when audio is unavailable. */ }
+  }
+
+  function stopAlertSound() {
+    alertOscillators.forEach(oscillator => { try { oscillator.stop(); } catch (_) {} });
+    alertOscillators = [];
+  }
+
+  function playAlertSound(style, volume, force = false) {
+    unlockAlertAudio();
+    stopAlertSound();
+    if (!alertAudioContext || alertAudioContext.state !== 'running') return;
+    const preferences = appData && appData.preferences || {};
+    style ||= preferences.globalSound || 'chime';
+    volume = Math.max(0, Math.min(150, Number(volume == null ? preferences.soundVolume ?? 100 : volume)));
+    if (style === 'none' || (!force && preferences.sound === false)) return;
+    const patterns = {
+      chime: { wave:'sine', notes:[[523,0],[659,.16],[784,.34]], level:.22, release:.7 },
+      wood: { wave:'triangle', notes:[[240,0],[180,.18]], level:.3, release:.22 },
+      sparkle: { wave:'sine', notes:[[659,0],[880,.12],[1047,.25],[1319,.39]], level:.22, release:.7 }
+    };
+    const pattern = patterns[style] || patterns.chime;
+    const release = pattern.release * 3;
+    const audible = Math.max(...pattern.notes.map(([, delay]) => delay + release));
+    const start = alertAudioContext.currentTime + .03;
+    for (let repeat = 0; repeat < 3; repeat += 1) {
+      pattern.notes.forEach(([frequency, delay]) => {
+        const oscillator = alertAudioContext.createOscillator();
+        const gain = alertAudioContext.createGain();
+        const at = start + repeat * audible * 2 + delay;
+        oscillator.type = pattern.wave; oscillator.frequency.value = frequency;
+        gain.gain.setValueAtTime(.0001, at);
+        gain.gain.exponentialRampToValueAtTime(Math.max(.0002, pattern.level * volume / 100), at + .04);
+        gain.gain.exponentialRampToValueAtTime(.0001, at + release);
+        oscillator.connect(gain).connect(alertAudioContext.destination);
+        oscillator.start(at); oscillator.stop(at + release + .04);
+        alertOscillators.push(oscillator);
+      });
+    }
+  }
+
+  function updateScheduleAlert() {
+    const layer = $('#scheduleAlertLayer');
+    if (!appData || !['teacher', 'student'].includes(appData.view) || document.hidden) return;
+    const now = Date.now() + serverOffset;
+    const date = new Date(now);
+    const dateKey = new Intl.DateTimeFormat('sv-SE', { timeZone:'Asia/Seoul', year:'numeric', month:'2-digit', day:'2-digit' }).format(date);
+    const timeText = new Intl.DateTimeFormat('ko-KR', { timeZone:'Asia/Seoul', hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false }).format(date);
+    if (!layer.hidden) {
+      const startAt = Number(layer.dataset.startAt);
+      $('#scheduleAlertNow').textContent = timeText;
+      if (layer.dataset.manual === 'true') return;
+      const seconds = Math.max(0, Math.ceil((startAt - now) / 1000));
+      $('#scheduleAlertRemaining').textContent = seconds ? `${Math.floor(seconds / 60)}분 ${String(seconds % 60).padStart(2, '0')}초 남음` : '일정 시작!';
+      return;
+    }
+    for (const item of appData.todaySchedule || []) {
+      const startAt = Date.parse(`${dateKey}T${item.startTime}:00+09:00`);
+      if (!Number.isFinite(startAt)) continue;
+      const advance = item.preAlertMinutes == null ? null : Math.max(0, Number(item.preAlertMinutes) || 0);
+      const notices = advance ? [{ phase:'pre', at:startAt - advance * 60000 }, { phase:'start', at:startAt }] : [{ phase:'start', at:startAt }];
+      for (const notice of notices) {
+        if (now < notice.at || now >= notice.at + 60000 || (notice.phase === 'pre' && now >= startAt)) continue;
+        const key = `${dateKey}|${appData.classId}|${item.id}|${item.startTime}|${notice.phase}`;
+        const storageKey = `classRoutine.scheduleAlert.${key}`;
+        if (sessionStorage.getItem(storageKey)) continue;
+        sessionStorage.setItem(storageKey, 'seen');
+        activeScheduleAlertKey = key;
+        layer.dataset.startAt = String(startAt);
+        layer.dataset.manual = 'false';
+        $('#scheduleAlertPhase').textContent = notice.phase === 'pre' ? '곧 시작할 일정' : '지금 시작할 일정';
+        $('#scheduleAlertStart').textContent = item.startTime;
+        $('#scheduleAlertTitle').textContent = item.title || '일정 안내';
+        $('#scheduleAlertMessage').textContent = item.message || `${item.category || '다음 일정'}을 확인해 주세요.`;
+        showAlertMeal(/점심|급식/.test(`${item.title} ${item.category}`));
+        $('#scheduleAlertHandoff').hidden = !item.handoffMessage;
+        $('#scheduleAlertHandoff').textContent = item.handoffMessage ? `이전 수업 메모 · ${item.handoffMessage}` : '';
+        $('#scheduleAlertTeacherNote').hidden = !item.teacherNote;
+        $('#scheduleAlertTeacherNote').textContent = item.teacherNote ? `교사 메모 · ${item.teacherNote}` : '';
+        const resource = $('#scheduleAlertResource');
+        resource.hidden = !item.resourceUrl;
+        if (item.resourceUrl) { resource.href = item.resourceUrl; resource.textContent = `${item.resourceLabel || '자료 열기'} ↗`; }
+        layer.hidden = false;
+        updateScheduleAlert();
+        playAlertSound();
+        $('#confirmScheduleAlert').focus();
+        return;
+      }
+    }
+  }
+
+  function showAlertMeal(visible) {
+    const target = $('#scheduleAlertMeal');
+    const meal = appData && appData.dailyInfo && appData.dailyInfo.meal;
+    if (!visible || !meal || meal.status !== 'ready') { target.hidden = true; target.textContent = ''; return; }
+    const menu = (meal.dishes || []).map(dish => dish.name).join(' · ');
+    const warnings = appData.view === 'teacher'
+      ? (meal.warningStudents || []).map(student => `${student.number || ''}번 ${student.name}: ${student.dishes.join('·')}`)
+      : (meal.warningDishes || []).map(dish => `${dish.name}: ${dish.matchedNames.join('·')}`);
+    target.textContent = `오늘 메뉴 · ${menu || '학교 식단표 확인'}${warnings.length ? `\n알레르기 주의 · ${warnings.join(' / ')}\n배식 전 학교 식단표와 관리 지침을 다시 확인하세요.` : ''}`;
+    target.hidden = false;
+  }
+
+  function openManualMeal() {
+    const layer = $('#scheduleAlertLayer');
+    stopAlertSound();
+    layer.dataset.manual = 'true';
+    layer.dataset.startAt = String(Date.now() + serverOffset);
+    $('#scheduleAlertPhase').textContent = '오늘의 급식';
+    $('#scheduleAlertStart').textContent = '—';
+    $('#scheduleAlertTitle').textContent = appData.dailyInfo && appData.dailyInfo.meal && appData.dailyInfo.meal.mealName || '오늘 급식';
+    $('#scheduleAlertMessage').textContent = '오늘 메뉴와 알레르기 주의 내용을 확인하세요.';
+    $('#scheduleAlertHandoff').hidden = true;
+    $('#scheduleAlertTeacherNote').hidden = true;
+    $('#scheduleAlertResource').hidden = true;
+    $('#scheduleAlertRemaining').textContent = '맛있게 드세요';
+    showAlertMeal(true);
+    layer.hidden = false;
+    updateScheduleAlert();
+    $('#confirmScheduleAlert').focus();
+  }
 
   function showView(id) {
     views.forEach(viewId => { $('#' + viewId).hidden = viewId !== id; });
@@ -35,8 +185,10 @@
   function callServer(method, payload) {
     return new Promise((resolve, reject) => {
       const runner = google.script.run.withSuccessHandler(resolve).withFailureHandler(reject);
-      if (payload === undefined) runner[method]();
-      else runner[method](payload);
+      const request = Object.assign({}, payload || {});
+      const authToken = sessionStorage.getItem(AUTH_TOKEN_KEY);
+      if (authToken) request._authToken = authToken;
+      runner[method](request);
     });
   }
 
@@ -57,6 +209,7 @@
     $('#roleChip').textContent = roleLabels[actor.role] || actor.role;
     $('#identityName').textContent = actor.name || roleLabels[actor.role] || '';
     $('#identityEmail').textContent = actor.email || '';
+    $('#logoutButton').hidden = !sessionStorage.getItem(AUTH_TOKEN_KEY);
   }
 
   function applyData(data) {
@@ -77,8 +230,15 @@
     try { applyData(await callServer('getBootstrap')); }
     catch (error) {
       $('#identity').hidden = true;
-      $('#errorMessage').textContent = errorText(error);
-      showView('errorView');
+      const message = errorText(error);
+      if (message.includes('LOGIN_REQUIRED')) {
+        sessionStorage.removeItem(AUTH_TOKEN_KEY);
+        $('#loginStatus').textContent = message.replace(/^.*LOGIN_REQUIRED:\s*/, '');
+        showView('loginView');
+      } else {
+        $('#errorMessage').textContent = message;
+        showView('errorView');
+      }
     }
   }
 
@@ -99,11 +259,34 @@
   function renderTeacher(data) {
     showView('teacherView');
     $('#teacherClassName').textContent = `${data.classroom.schoolName || ''} ${data.classroom.className || ''}`.trim();
+    requestAnimationFrame(fitTeacherHeading);
     $('#masterReturnButton').hidden = data.actor.role !== 'master';
+    $('#neisApiKey').closest('details').hidden = data.actor.role !== 'master';
     $('#rosterCount').textContent = `${data.roster.length}명`;
+    if (scheduleClassId !== data.classId) {
+      scheduleClassId = data.classId;
+      scheduleWeekStart = data.selectedWeekStart || '';
+      renderedPlanKey = '';
+      weekPlanDirty = false;
+      subjectEditorId = '';
+      routineEditorId = '';
+    }
+    if (!scheduleWeekStart) scheduleWeekStart = data.selectedWeekStart || '';
+    renderSubjectSettings(data.subjects || []);
+    renderWeekPlan(data.weekPlan);
+    renderRoutineEditor(data.routines || [], data.subjects || []);
+    renderPreferences(data.preferences || {});
+    renderSchedule(data.todaySchedule || [], 'teacher');
+    renderRecordPanel(data.todaySchedule || [], data.todayRecords || []);
+    renderSeating(data.seating, data.roster || []);
+    renderDuty(data.dutyToday, 'teacher');
+    renderDutyEditor(data.dutyBoard, data.roster || []);
+    renderAnnouncement(data.announcement, 'teacher');
+    renderClassTimer(data.classTimer, 'teacher');
     if (serviceEditorClassId !== data.classId) {
       serviceEditorClassId = data.classId;
       const service = data.serviceSettings || {};
+      $('#neisSchoolSearch').value = data.classroom && data.classroom.schoolName || '';
       $('#neisOfficeCode').value = service.neisOfficeCode || '';
       $('#neisSchoolCode').value = service.neisSchoolCode || '';
       $('#weatherNx').value = service.weatherNx || '';
@@ -141,6 +324,420 @@
     `).join('') : '<div class="bar-empty">기다리는 학생이 없어요.</div>';
   }
 
+  function fitTeacherHeading() {
+    const title = $('#teacherClassName').parentElement;
+    if (!title || title.hidden || !title.clientWidth) return;
+    title.style.fontSize = '';
+    const naturalSize = parseFloat(getComputedStyle(title).fontSize) || 62;
+    if (title.scrollWidth <= title.clientWidth) return;
+    const fittedSize = Math.max(15, Math.floor(naturalSize * title.clientWidth / title.scrollWidth * 0.98));
+    title.style.fontSize = `${fittedSize}px`;
+  }
+
+  function renderSubjectSettings(subjects) {
+    $('#subjectOptions').innerHTML = subjects.filter(item => item.enabled).map(item => `<option value="${escapeHtml(item.name)}"></option>`).join('');
+    const select = $('#subjectSettingSelect');
+    const optionsKey = subjects.map(item => `${item.subjectId}:${item.name}`).join('|');
+    if (select.dataset.optionsKey !== optionsKey) {
+      select.dataset.optionsKey = optionsKey;
+      select.innerHTML = subjects.map(item => `<option value="${escapeHtml(item.subjectId)}">${escapeHtml(item.name)}</option>`).join('');
+    }
+    if (!subjectEditorId || !subjects.some(item => item.subjectId === subjectEditorId)) subjectEditorId = subjects[0] && subjects[0].subjectId || '';
+    if (subjectEditorId) select.value = subjectEditorId;
+    const form = $('#subjectSettingForm');
+    if (!form.contains(document.activeElement)) fillSubjectEditor(subjectEditorId, subjects);
+  }
+
+  function fillSubjectEditor(subjectId, subjects = appData && appData.subjects || []) {
+    const subject = subjects.find(item => item.subjectId === subjectId);
+    if (!subject) return;
+    subjectEditorId = subject.subjectId;
+    $('#subjectSettingSelect').value = subject.subjectId;
+    $('#subjectSettingName').value = subject.name || '';
+    $('#subjectSettingMessage').value = subject.message || '';
+    $('#subjectResourceLabel').value = subject.resourceLabel || '';
+    $('#subjectResourceUrl').value = subject.resourceUrl || '';
+  }
+
+  function renderRoutineEditor(routines, subjects) {
+    const select = $('#routineSelect');
+    const key = routines.map(item => `${item.id}:${item.title}:${item.startTime}:${item.weekStart}`).join('|');
+    if (select.dataset.optionsKey !== key) {
+      select.dataset.optionsKey = key;
+      select.innerHTML = '<option value="">새 일정</option>' + routines.slice().sort((a, b) => a.startTime.localeCompare(b.startTime))
+        .map(item => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.startTime)} · ${escapeHtml(item.title)}${item.weekStart ? ` (${escapeHtml(item.weekStart)} 주)` : ''}</option>`).join('');
+    }
+    $('#routineSubject').innerHTML = '<option value="">과목 없음</option>' + subjects.filter(item => item.enabled)
+      .map(item => `<option value="${escapeHtml(item.subjectId)}">${escapeHtml(item.name)}</option>`).join('');
+    if (routineEditorId && !routines.some(item => item.id === routineEditorId)) routineEditorId = '';
+    select.value = routineEditorId;
+    if (routineEditorId && !$('#routineForm').contains(document.activeElement)) fillRoutineEditor(routineEditorId);
+    $('#deleteRoutineButton').hidden = !routineEditorId;
+  }
+
+  function renderPreferences(preferences) {
+    const key = `${appData.classId}:${JSON.stringify(preferences)}`;
+    if (preferencesEditorKey === key || $('#classPreferencesForm').contains(document.activeElement)) return;
+    preferencesEditorKey = key;
+    const messages = preferences.commonMessages || {};
+    $('#commonBreakMessage').value = messages.break || '';
+    $('#commonMiddleMessage').value = messages.middlePlay || '';
+    $('#commonLunchMessage').value = messages.lunch || '';
+    $('#globalSound').value = preferences.globalSound || 'chime';
+    $('#soundVolume').value = preferences.soundVolume ?? 100;
+    $('#soundEnabled').checked = preferences.sound !== false;
+  }
+
+  function fillRoutineEditor(id) {
+    const routine = (appData && appData.routines || []).find(item => item.id === id);
+    routineEditorId = routine ? routine.id : '';
+    $('#routineSelect').value = routineEditorId;
+    $('#routineStart').value = routine ? routine.startTime : '08:40';
+    $('#routineDuration').value = routine ? routine.duration : 10;
+    $('#routineType').value = routine ? routine.type : 'other';
+    $('#routineWeekScope').value = routine && routine.weekStart ? 'week' : '';
+    $('#routineWeekStart').value = routine && routine.weekStart || scheduleWeekStart;
+    $('#routineWeekStartWrap').hidden = $('#routineWeekScope').value !== 'week';
+    $('#routineTitle').value = routine ? routine.title : '';
+    $('#routineSubject').value = routine ? routine.subjectId : '';
+    $('#routineCategory').value = routine ? routine.category : '';
+    $('#routinePreMode').value = routine ? routine.preAlertMode : 'default';
+    $('#routinePreMinutes').value = routine ? routine.preAlertMinutes : 2;
+    $('#routinePreMinutes').disabled = $('#routinePreMode').value !== 'custom';
+    $('#routineMessage').value = routine ? routine.eventMessage : '';
+    $$('[data-routine-day]').forEach(input => { input.checked = routine ? routine.activeDays.includes(Number(input.dataset.routineDay)) : true; });
+    $('#routineEnabled').checked = routine ? routine.enabled : true;
+    $('#deleteRoutineButton').hidden = !routine;
+  }
+
+  function renderWeekPlan(weekPlan) {
+    if (!weekPlan || weekPlan.weekStart !== scheduleWeekStart) return;
+    const key = `${weekPlan.weekStart}:${weekPlan.revision}:${weekPlan.updatedAt}`;
+    if (weekPlanDirty && renderedPlanKey && renderedPlanKey !== key) {
+      $('#weekPlanState').textContent = '다른 화면에서 변경됨 · 저장 전 새로고침 필요';
+      $('#weekPlanState').className = 'conflict';
+      return;
+    }
+    if (weekPlanDirty || renderedPlanKey === key) return;
+    renderedPlanKey = key;
+    const plan = weekPlan.plan || {}, schedule = plan.schedule || {};
+    $('#planSchoolLevel').value = schedule.schoolLevel || 'elementary';
+    $('#planFirstStart').value = schedule.firstStart || '09:00';
+    $('#planClassMinutes').value = schedule.classMinutes || 40;
+    $('#planBreakMinutes').value = schedule.breakMinutes ?? 10;
+    $('#planPeriodCount').value = schedule.periodCount || 6;
+    $('#planMiddleEnabled').checked = Boolean(schedule.middlePlay && schedule.middlePlay.enabled);
+    $('#planMiddleAfter').value = schedule.middlePlay && schedule.middlePlay.afterPeriod || 2;
+    $('#planMiddleDuration').value = schedule.middlePlay && schedule.middlePlay.duration || 20;
+    $('#planLunchEnabled').checked = Boolean(schedule.lunch && schedule.lunch.enabled);
+    $('#planLunchAfter').value = schedule.lunch && schedule.lunch.afterPeriod || 4;
+    $('#planLunchDuration').value = schedule.lunch && schedule.lunch.duration || 50;
+    $('#planDismissalEnabled').checked = Boolean(schedule.dismissal && schedule.dismissal.enabled);
+    $('#planDismissalFive').value = schedule.dismissal && schedule.dismissal.afterFive || '13:50';
+    $('#planDismissalSix').value = schedule.dismissal && schedule.dismissal.afterSix || '14:40';
+    buildWeekPlanGrid(plan);
+    const monday = new Date(`${weekPlan.weekStart}T12:00:00`), friday = new Date(monday); friday.setDate(monday.getDate() + 4);
+    $('#weekPlanLabel').textContent = `${monday.toLocaleDateString('ko-KR', { month:'long', day:'numeric' })} ~ ${friday.toLocaleDateString('ko-KR', { month:'long', day:'numeric' })}`;
+    $('#weekPlanState').textContent = weekPlan.revision ? `${new Date(weekPlan.updatedAt).toLocaleString('ko-KR')} 저장 · 버전 ${weekPlan.revision}` : '저장된 시간표 없음';
+    $('#weekPlanState').className = '';
+  }
+
+  function buildWeekPlanGrid(plan) {
+    const count = Math.max(1, Math.min(8, Number($('#planPeriodCount').value) || 6));
+    const subjects = (appData.subjects || []).filter(item => item.enabled);
+    const options = `<option value="">미배정</option>` + subjects.map(item => `<option value="${escapeHtml(item.subjectId)}">${escapeHtml(item.name)}</option>`).join('');
+    const names = { 1:'월요일', 2:'화요일', 3:'수요일', 4:'목요일', 5:'금요일' };
+    $('#weekPlanGrid').innerHTML = [1,2,3,4,5].map(day => `<section class="plan-day"><h3>${names[day]}</h3>${Array.from({ length: count }, (_, index) => {
+      const period = index + 1;
+      return `<label><span>${period}교시</span><select data-plan-day="${day}" data-plan-period="${period}">${options}</select></label>`;
+    }).join('')}</section>`).join('');
+    $$('[data-plan-day]').forEach(select => { select.value = plan.timetable && plan.timetable[select.dataset.planDay] && plan.timetable[select.dataset.planDay][select.dataset.planPeriod] || ''; });
+  }
+
+  function collectWeekPlan() {
+    const timetable = {};
+    $$('[data-plan-day]').forEach(select => {
+      if (!select.value) return;
+      timetable[select.dataset.planDay] ||= {};
+      timetable[select.dataset.planDay][select.dataset.planPeriod] = select.value;
+    });
+    return {
+      schedule: {
+        activeDays: [1,2,3,4,5], schoolLevel: $('#planSchoolLevel').value, firstStart: $('#planFirstStart').value,
+        classMinutes: Number($('#planClassMinutes').value), breakMinutes: Number($('#planBreakMinutes').value),
+        periodCount: Number($('#planPeriodCount').value), defaultPreAlert: 2,
+        middlePlay: { enabled: $('#planMiddleEnabled').checked, afterPeriod: Number($('#planMiddleAfter').value), duration: Number($('#planMiddleDuration').value) },
+        lunch: { enabled: $('#planLunchEnabled').checked, afterPeriod: Number($('#planLunchAfter').value), duration: Number($('#planLunchDuration').value) },
+        dismissal: { enabled: $('#planDismissalEnabled').checked, afterFive: $('#planDismissalFive').value, afterSix: $('#planDismissalSix').value }
+      }, timetable
+    };
+  }
+
+  function mapSchoolTimetable(parsed) {
+    const timetable = {}, missing = new Set();
+    Object.entries(parsed.table || {}).forEach(([day, periods]) => {
+      if (Number(day) < 1 || Number(day) > 5) return;
+      Object.entries(periods).forEach(([period, name]) => {
+        const subject = SchoolTimetableImport.findSubject(name, appData.subjects || []);
+        if (!subject) { missing.add(name); return; }
+        timetable[day] ||= {};
+        timetable[day][period] = subject.subjectId;
+      });
+    });
+    return { timetable, missing:[...missing] };
+  }
+
+  function updateSchoolTimetablePreview() {
+    const parsed = pendingSchoolTimetable;
+    if (!parsed) return;
+    const mapped = mapSchoolTimetable(parsed);
+    $('#schoolTimetablePreview').innerHTML = `<b>${escapeHtml(parsed.weekStart)} 주 · ${parsed.lessonCount}개 수업 · 최대 ${parsed.maxPeriod}교시</b><span>${parsed.columns.map(item => escapeHtml(item.label)).join(' · ')}</span><small>${mapped.missing.length ? `과목 연결 필요: ${mapped.missing.map(escapeHtml).join(' · ')}. 과목 기본 설정에 추가한 뒤 다시 확인하세요.` : `과목 연결 완료 · 공휴일/비수업 ${parsed.ignored.length}칸 제외. 저장하면 이 주의 기존 시간표가 바뀝니다.`}</small>`;
+    $('#applySchoolTimetable').disabled = Boolean(mapped.missing.length);
+  }
+
+  function renderSchedule(items, audience) {
+    const now = new Date(Date.now() + serverOffset), minute = now.getHours() * 60 + now.getMinutes();
+    const toMinutes = value => Number(String(value || '00:00').slice(0,2)) * 60 + Number(String(value || '00:00').slice(3,5));
+    const currentIndex = items.findIndex(item => minute >= toMinutes(item.startTime) && minute < toMinutes(item.endTime));
+    const nextIndex = items.findIndex(item => toMinutes(item.startTime) > minute);
+    const container = audience === 'teacher' ? $('#teacherTodaySchedule') : $('#studentTodaySchedule');
+    const status = audience === 'teacher' ? $('#teacherScheduleStatus') : $('#studentScheduleStatus');
+    status.textContent = currentIndex >= 0 ? `${items[currentIndex].title} 진행 중` : nextIndex >= 0 ? `${items[nextIndex].startTime} 다음 일정` : items.length ? '오늘 일정 완료' : '저장된 일정 없음';
+    container.innerHTML = items.length ? items.map((item, index) => {
+      const state = index === currentIndex ? 'current' : index === nextIndex ? 'next' : minute >= toMinutes(item.endTime) ? 'done' : '';
+      const link = item.resourceUrl ? (audience === 'student' ? `<a href="${escapeHtml(item.resourceUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(item.resourceLabel || '자료 열기')} ↗</a>` : `<span class="schedule-resource">링크 있음</span>`) : '';
+      const content = `<time>${escapeHtml(item.startTime)}</time><div><small>${escapeHtml(item.category || item.type)}</small><b>${escapeHtml(item.title)}</b>${item.handoffMessage || item.message ? `<p>${escapeHtml(item.handoffMessage || item.message)}</p>` : ''}</div>${link}`;
+      return audience === 'teacher' && item.type === 'class' ? `<button class="schedule-line ${state}" type="button" data-use-schedule="${index}">${content}<em>게시 준비</em></button>` : `<article class="schedule-line ${state}">${content}</article>`;
+    }).join('') : '<div class="schedule-empty">이 주의 시간표를 저장하거나 설치형 백업을 가져오세요.</div>';
+  }
+
+  function renderRecordPanel(items, records) {
+    const completed = new Set(records.map(item => item.routineId));
+    const time = new Intl.DateTimeFormat('en-GB', { timeZone:'Asia/Seoul', hour:'2-digit', minute:'2-digit', hour12:false }).format(new Date(Date.now() + serverOffset));
+    const ended = items.filter(item => completed.has(item.id) || item.endTime <= time).length;
+    $('#routineRecordCount').textContent = `${ended} / ${items.length} 종료`;
+    $('#routineRecordList').innerHTML = items.length ? items.map(item => {
+      const recorded = completed.has(item.id);
+      const autoDone = !recorded && item.endTime <= time;
+      const status = recorded ? '기록 완료' : autoDone ? '시간상 종료' : '진행 전·중';
+      return `<article class="routine-record-row"><time>${escapeHtml(item.startTime)}</time><b>${escapeHtml(item.title)}</b><span>${status}</span><button type="button" data-record-routine="${escapeHtml(item.id)}" data-recorded="${recorded ? 'true' : 'false'}">${recorded ? '기록 취소' : '종료 기록'}</button></article>`;
+    }).join('') : '<div class="schedule-empty">오늘 일정이 없습니다.</div>';
+  }
+
+  function seatSlots(layout) {
+    const slots = [];
+    for (let section = 0; section < layout.sections; section += 1) {
+      for (let row = 0; row < layout.rows; row += 1) {
+        for (let column = 0; column < layout.seats[section]; column += 1) slots.push({ section, row, column, id:`${section}-${row}-${column}` });
+      }
+    }
+    return slots;
+  }
+
+  function renderSeating(remote, roster) {
+    if (!remote || seatingSaving) return;
+    if (!seatingDraft || seatingRevision !== remote.revision) {
+      seatingDraft = JSON.parse(JSON.stringify(remote));
+      seatingRevision = remote.revision;
+      selectedSeatId = '';
+      $('#seatSections').value = seatingDraft.layout.sections;
+      $('#seatRows').value = seatingDraft.layout.rows;
+      $('#seatMixGender').checked = seatingDraft.options.mixGender;
+      $('#seatAvoidPairs').checked = seatingDraft.options.avoidPairs;
+      $('#seatAvoidSeats').checked = seatingDraft.options.avoidSeats;
+      renderSeatWidths();
+      renderSeatBoard(roster);
+    }
+  }
+
+  function renderSeatWidths() {
+    if (!seatingDraft) return;
+    $('#seatWidths').innerHTML = seatingDraft.layout.seats.map((width, index) =>
+      `<label>${index + 1}분단 가로 좌석<input type="number" min="1" max="6" data-seat-width="${index}" value="${width}"></label>`).join('');
+  }
+
+  function renderSeatBoard(roster = appData && appData.roster || []) {
+    if (!seatingDraft) return;
+    const board = $('#seatingBoard'), layout = seatingDraft.layout;
+    const students = new Map(roster.flatMap(item => [[item.seatKey || item.email, item], [item.email, item]].filter(([key]) => key)));
+    board.style.setProperty('--seat-sections', layout.sections);
+    if (!seatingDraft.current) {
+      board.innerHTML = '<p class="schedule-empty">아직 만든 자리 배치가 없습니다. 교실 크기를 확인하고 ‘새 자리 만들기’를 누르세요.</p>';
+    } else {
+      board.innerHTML = Array.from({ length:layout.sections }, (_, section) =>
+        `<section class="seat-section"><h3>${section + 1}분단</h3>${Array.from({ length:layout.rows }, (_, row) =>
+          `<div class="seat-row" style="--seat-columns:${layout.seats[section]}">${Array.from({ length:layout.seats[section] }, (_, column) => {
+            const id = `${section}-${row}-${column}`;
+            const student = students.get(seatingDraft.current.seats[id]);
+            return `<button type="button" class="seat-tile${id === selectedSeatId ? ' selected' : ''}" data-seat-id="${id}"><small>${student ? escapeHtml(student.number || '') + '번' : '빈자리'}</small><b>${student ? escapeHtml(student.name) : '—'}</b></button>`;
+          }).join('')}</div>`).join('')}</section>`).join('');
+    }
+    $('#seatingStatus').textContent = `${seatingDraft.history.length}회차 저장 · ${seatingDraft.current ? Object.values(seatingDraft.current.seats).filter(Boolean).length : 0}명 배치 · 좌석 ${seatSlots(layout).length}개`;
+    $('#seatingHistory').innerHTML = seatingDraft.history.length ? `<b>확정 이력</b> ${seatingDraft.history.slice(-5).reverse().map((entry, index) => `<span>${seatingDraft.history.length - index}회차 · ${escapeHtml(entry.savedAt.slice(0, 10))}</span>`).join('')}` : '<span>확정 이력이 아직 없습니다.</span>';
+  }
+
+  function shuffleSeats(values) {
+    const result = values.slice();
+    for (let index = result.length - 1; index > 0; index -= 1) {
+      const random = crypto.getRandomValues(new Uint32Array(1))[0] % (index + 1);
+      [result[index], result[random]] = [result[random], result[index]];
+    }
+    return result;
+  }
+
+  function seatingPenalty(candidate, history, options) {
+    const oldSeats = new Map(), oldPairs = new Map();
+    const pairs = seats => {
+      const groups = new Map();
+      Object.entries(seats).forEach(([id, email]) => {
+        if (!email) return;
+        const [section, row, column] = id.split('-').map(Number);
+        const pair = `${section}-${row}-${Math.floor(column / 2)}`;
+        if (!groups.has(pair)) groups.set(pair, []);
+        groups.get(pair).push(email);
+      });
+      const matches = new Map();
+      groups.forEach(group => group.forEach(email => matches.set(email, group.filter(other => other !== email))));
+      return matches;
+    };
+    history.forEach(entry => {
+      Object.entries(entry.seats || {}).forEach(([id, email]) => {
+        if (!email) return;
+        if (!oldSeats.has(email)) oldSeats.set(email, new Set());
+        oldSeats.get(email).add(id);
+      });
+      pairs(entry.seats || {}).forEach((others, email) => {
+        if (!oldPairs.has(email)) oldPairs.set(email, new Set());
+        others.forEach(other => oldPairs.get(email).add(other));
+      });
+    });
+    const currentPairs = pairs(candidate.seats);
+    let penalty = 0;
+    Object.entries(candidate.seats).forEach(([id, email]) => {
+      if (options.avoidSeats && oldSeats.get(email)?.has(id)) penalty += 5;
+      if (options.avoidPairs) (currentPairs.get(email) || []).forEach(other => { if (oldPairs.get(email)?.has(other)) penalty += 3; });
+    });
+    return penalty;
+  }
+
+  function generateSeatCandidate(roster) {
+    const layout = seatingDraft.layout;
+    const pool = shuffleSeats(roster);
+    const seats = {};
+    shuffleSeats(seatSlots(layout)).forEach(slot => {
+      const preferred = slot.column % 2 === 0 ? '여' : '남';
+      let index = seatingDraft.options.mixGender ? pool.findIndex(student => student.gender === preferred) : -1;
+      if (index < 0) index = pool.length ? 0 : -1;
+      if (index >= 0) {
+        const student = pool.splice(index, 1)[0];
+        seats[slot.id] = student.seatKey || student.email;
+      }
+    });
+    return { savedAt:new Date().toISOString(), layout:JSON.parse(JSON.stringify(layout)), seats };
+  }
+
+  async function persistSeating(button, label) {
+    if (!seatingDraft || seatingSaving) return false;
+    seatingSaving = true;
+    const saved = await runAction(button, 'saveSeatingBoard', {
+      classId: appData.classId, weekStart: scheduleWeekStart, revision: seatingRevision, board: seatingDraft
+    }, label);
+    seatingSaving = false;
+    if (saved) {
+      seatingDraft = JSON.parse(JSON.stringify(appData.seating));
+      seatingRevision = appData.seating.revision;
+      renderSeatBoard();
+    } else {
+      seatingDraft = null;
+      await refreshState();
+    }
+    return saved;
+  }
+
+  function renderDuty(duty, audience) {
+    const roles = duty && duty.roles || [];
+    const target = audience === 'teacher' ? $('#teacherDutyToday') : $('#studentDutyToday');
+    target.innerHTML = roles.length ? roles.map(role => `<article><b>${escapeHtml(role.name)}</b><span>${role.students.length ? role.students.map(student => `${escapeHtml(student.number ? student.number + '번 ' : '')}${escapeHtml(student.name)}`).join(' · ') : '미배정'}</span></article>`).join('') : '<span class="duty-empty">가져온 역할 배정이 없습니다.</span>';
+    if (audience === 'student') $('#studentDutyBoard').hidden = !roles.length;
+  }
+
+  function markDutyDirty() {
+    dutyDirty = true;
+    $('#dutyEditState').textContent = '저장하지 않은 변경';
+  }
+
+  function renderDutyEditor(remote, roster) {
+    if (!remote) return;
+    if (dutyDirty) {
+      if (dutyUpdatedAt !== remote.updatedAt) $('#dutyEditState').textContent = '다른 화면에서 변경됨 · 현재 입력을 보관 중';
+      return;
+    }
+    if (dutyDraft && dutyUpdatedAt === remote.updatedAt) return;
+    dutyDraft = JSON.parse(JSON.stringify(remote));
+    dutyUpdatedAt = remote.updatedAt || '';
+    $('#dutyTerm').value = dutyDraft.term || '';
+    renderDutyEditorList(roster);
+    $('#dutyEditState').textContent = `${dutyDraft.roles.length}개 역할 · 저장됨`;
+  }
+
+  function renderDutyEditorList(roster = appData && appData.roster || []) {
+    if (!dutyDraft) return;
+    const studentOptions = '<option value="">미배정</option>' + roster.map(student => {
+      const key = `${student.number || ''}␟${student.name}`;
+      return `<option value="${escapeHtml(key)}">${escapeHtml(student.number ? student.number + '번 ' : '')}${escapeHtml(student.name)}</option>`;
+    }).join('');
+    $('#dutyEditorList').innerHTML = dutyDraft.roles.map(role => {
+      const assignments = dutyDraft.assignments[role.id] || [];
+      const slots = Array.from({ length:role.capacity || 1 }, (_, slot) => `<label>${slot + 1}번째 학생<select data-duty-id="${escapeHtml(role.id)}" data-duty-slot="${slot}">${studentOptions}</select></label>`).join('');
+      return `<article class="duty-editor-role" data-duty-role="${escapeHtml(role.id)}"><div class="duty-role-head"><label>역할 이름<input data-duty-field="name" value="${escapeHtml(role.name)}" maxlength="60"></label><label>정원<input data-duty-field="capacity" type="number" min="1" max="12" value="${role.capacity || 1}"></label><button class="quiet-button" type="button" data-delete-duty="${escapeHtml(role.id)}">역할 삭제</button></div><label>업무 안내<input data-duty-field="description" value="${escapeHtml(role.description || '')}" maxlength="200"></label><div class="duty-slots">${slots}</div></article>`;
+    }).join('') || '<p class="schedule-empty">아직 역할이 없습니다. ‘역할 추가’를 누르세요.</p>';
+    $$('[data-duty-slot]').forEach(select => {
+      select.value = (dutyDraft.assignments[select.dataset.dutyId] || [])[Number(select.dataset.dutySlot)] || '';
+    });
+  }
+
+  function renderAnnouncement(announcement, audience) {
+    announcement = announcement || { message:'', emphasis:'normal' };
+    if (audience === 'teacher') {
+      const form = $('#announcementForm');
+      if (!form.contains(document.activeElement)) {
+        $('#announcementMessage').value = announcement.message || '';
+        $('#announcementEmphasis').value = announcement.emphasis || 'normal';
+      }
+      return;
+    }
+    const banner = $('#studentAnnouncement');
+    banner.hidden = !announcement.message;
+    banner.dataset.emphasis = announcement.emphasis || 'normal';
+    $('#studentAnnouncementMessage').textContent = announcement.message || '';
+  }
+
+  function renderClassTimer(timer, audience) {
+    if (audience === 'teacher') {
+      const remaining = timer ? Math.max(0, Math.ceil((Date.parse(timer.endsAt) - (Date.now() + serverOffset)) / 1000)) : 0;
+      $('#timerState').textContent = remaining ? `${timer.label} · ${Math.floor(remaining / 60)}:${String(remaining % 60).padStart(2, '0')}` : '타이머 대기';
+      $('#stopClassTimer').disabled = !timer;
+    }
+    const layer = $('#classTimerLayer');
+    if (!timer || timer.timerId === dismissedTimerId || Date.parse(timer.endsAt) <= Date.now() + serverOffset) { layer.hidden = true; return; }
+    $('#classTimerTitle').textContent = timer.label || '교실 타이머';
+    layer.dataset.timerId = timer.timerId;
+    layer.hidden = false;
+    updateClassTimer();
+  }
+
+  function updateClassTimer() {
+    if (!appData || !appData.classTimer) return;
+    const timer = appData.classTimer, now = Date.now() + serverOffset;
+    const remaining = Math.max(0, Math.ceil((Date.parse(timer.endsAt) - now) / 1000));
+    const total = Math.max(1, Number(timer.durationSeconds) || remaining);
+    $('#classTimerCountdown').textContent = remaining ? `${String(Math.floor(remaining / 60)).padStart(2, '0')}:${String(remaining % 60).padStart(2, '0')}` : '완료!';
+    $('#classTimerProgress').style.width = `${Math.max(0, Math.min(100, remaining / total * 100))}%`;
+    $('#classTimerEndAt').textContent = `${new Date(timer.endsAt).toLocaleTimeString('ko-KR', { hour:'2-digit', minute:'2-digit' })} 종료`;
+    if (!remaining) $('#classTimerLayer').hidden = true;
+    if (appData.view === 'teacher') $('#timerState').textContent = remaining ? `${timer.label} · ${Math.floor(remaining / 60)}:${String(remaining % 60).padStart(2, '0')}` : '타이머 종료';
+  }
+
   function renderBars(container, labels, counts, total) {
     if (!labels.length) {
       container.innerHTML = '<div class="bar-empty">아직 표시할 응답이 없어요.</div>';
@@ -158,6 +755,10 @@
     $('#studentName').textContent = data.student.name || '학생';
     $('#studentClassLabel').textContent = `${data.classroom.schoolName || ''} · ${data.classroom.className || ''}`;
     renderDailyInfo(data.dailyInfo, 'student');
+    renderSchedule(data.todaySchedule || [], 'student');
+    renderDuty(data.dutyToday, 'student');
+    renderAnnouncement(data.announcement, 'student');
+    renderClassTimer(data.classTimer, 'student');
     const active = Boolean(data.state);
     $('#emptySession').hidden = active;
     $('#studentSession').hidden = !active;
@@ -226,7 +827,7 @@
   async function refreshState() {
     if (!appData) return;
     if (document.hidden) return schedulePolling();
-    try { applyData(await callServer('getAppState', { classId: appData.classId || '' })); }
+    try { applyData(await callServer('getAppState', { classId: appData.classId || '', weekStart: appData.view === 'teacher' ? scheduleWeekStart : '' })); }
     catch (error) { toast(errorText(error)); schedulePolling(); }
   }
 
@@ -238,6 +839,46 @@
   }
 
   $('#retryButton').addEventListener('click', initialize);
+
+  $('#loginForm').addEventListener('submit', async event => {
+    event.preventDefault();
+    const button = $('#requestLoginCodeButton');
+    setBusy(button, true, '보내는 중…');
+    try {
+      const result = await callServer('requestLoginCode', { email: $('#loginEmail').value });
+      loginChallengeId = result.challengeId || '';
+      $('#loginCodeWrap').hidden = false;
+      $('#loginStatus').textContent = result.message || '등록된 이메일이면 인증번호를 보냈습니다.';
+      $('#loginCode').focus();
+    } catch (error) { $('#loginStatus').textContent = errorText(error); }
+    finally { setBusy(button, false); }
+  });
+
+  $('#verifyLoginCodeButton').addEventListener('click', async event => {
+    const button = event.currentTarget;
+    setBusy(button, true, '확인 중…');
+    try {
+      const result = await callServer('verifyLoginCode', {
+        email: $('#loginEmail').value, challengeId: loginChallengeId, code: $('#loginCode').value
+      });
+      sessionStorage.setItem(AUTH_TOKEN_KEY, result.authToken);
+      $('#loginStatus').textContent = '확인되었습니다. 교실을 여는 중입니다.';
+      await initialize();
+    } catch (error) { $('#loginStatus').textContent = errorText(error); }
+    finally { setBusy(button, false); }
+  });
+
+  $('#logoutButton').addEventListener('click', async () => {
+    try { await callServer('logoutSession', {}); } catch (_) {}
+    sessionStorage.removeItem(AUTH_TOKEN_KEY);
+    appData = null;
+    $('#identity').hidden = true;
+    $('#loginCode').value = '';
+    loginChallengeId = '';
+    $('#loginCodeWrap').hidden = true;
+    $('#loginStatus').textContent = '로그아웃했습니다.';
+    showView('loginView');
+  });
 
   $('#classForm').addEventListener('submit', async event => {
     event.preventDefault();
@@ -259,6 +900,557 @@
     if (await runAction(event.currentTarget, 'getAppState', { classId: '' }, '이동 중…')) serviceEditorClassId = '';
   });
 
+  function mondayKey(date = new Date()) {
+    const value = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 12);
+    const offset = (value.getDay() + 6) % 7;
+    value.setDate(value.getDate() - offset);
+    return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`;
+  }
+
+  function shiftedWeek(weekStart, days) {
+    const date = new Date(`${weekStart}T12:00:00`);
+    date.setDate(date.getDate() + days);
+    return mondayKey(date);
+  }
+
+  async function openWeek(weekStart, button) {
+    if (weekPlanDirty && !confirm('저장하지 않은 시간표 변경이 있습니다. 이동할까요?')) return;
+    scheduleWeekStart = weekStart;
+    weekPlanDirty = false;
+    renderedPlanKey = '';
+    await runAction(button, 'getAppState', { classId: appData.classId, weekStart }, '불러오는 중…');
+  }
+
+  $('#previousWeek').addEventListener('click', event => openWeek(shiftedWeek(scheduleWeekStart, -7), event.currentTarget));
+  $('#currentWeek').addEventListener('click', event => openWeek(mondayKey(), event.currentTarget));
+  $('#nextWeek').addEventListener('click', event => openWeek(shiftedWeek(scheduleWeekStart, 7), event.currentTarget));
+
+  $('#weekPlanGrid').addEventListener('change', () => {
+    weekPlanDirty = true;
+    $('#weekPlanState').textContent = '저장하지 않은 변경';
+    $('#weekPlanState').className = 'dirty';
+  });
+  $('#planSchoolLevel').addEventListener('change', event => {
+    const minutes = { elementary:40, middle:45, high:50 }[event.target.value];
+    if (minutes) { $('#planClassMinutes').value = minutes; $('#planBreakMinutes').value = 10; }
+    $('#planDismissalEnabled').checked = event.target.value === 'elementary';
+  });
+  $$('.schedule-structure input, .schedule-structure select').forEach(input => input.addEventListener('change', () => {
+    const draft = collectWeekPlan();
+    if (input.id === 'planPeriodCount') buildWeekPlanGrid(draft);
+    weekPlanDirty = true;
+    $('#weekPlanState').textContent = '저장하지 않은 변경';
+    $('#weekPlanState').className = 'dirty';
+  }));
+
+  $('#saveWeekPlan').addEventListener('click', async event => {
+    const revision = appData.weekPlan && appData.weekPlan.weekStart === scheduleWeekStart ? appData.weekPlan.revision : 0;
+    if (await runAction(event.currentTarget, 'saveWeekPlan', { classId: appData.classId, weekStart: scheduleWeekStart, revision, plan: collectWeekPlan() }, '저장 중…')) {
+      weekPlanDirty = false; renderedPlanKey = ''; renderWeekPlan(appData.weekPlan); toast('이 주의 시간표를 저장했어요.');
+    }
+  });
+
+  $('#copyPreviousPlan').addEventListener('click', async event => {
+    const overwrite = Boolean(appData.weekPlan && appData.weekPlan.revision);
+    if (overwrite && !confirm('현재 주 시간표를 이전에 저장한 시간표로 덮어쓸까요?')) return;
+    if (await runAction(event.currentTarget, 'copyPreviousWeek', { classId: appData.classId, weekStart: scheduleWeekStart, overwrite }, '복사 중…')) {
+      weekPlanDirty = false; renderedPlanKey = ''; renderWeekPlan(appData.weekPlan); toast('가장 가까운 이전 시간표를 복사했어요.');
+    }
+  });
+
+  $('#subjectSettingSelect').addEventListener('change', event => fillSubjectEditor(event.target.value));
+  $('#routineSelect').addEventListener('change', event => fillRoutineEditor(event.target.value));
+  $('#newRoutineButton').addEventListener('click', () => { fillRoutineEditor(''); $('#routineTitle').focus(); });
+  $('#routineWeekScope').addEventListener('change', () => {
+    $('#routineWeekStartWrap').hidden = $('#routineWeekScope').value !== 'week';
+    if ($('#routineWeekScope').value === 'week' && !$('#routineWeekStart').value) $('#routineWeekStart').value = scheduleWeekStart;
+  });
+  $('#routinePreMode').addEventListener('change', () => { $('#routinePreMinutes').disabled = $('#routinePreMode').value !== 'custom'; });
+  $('#routineForm').addEventListener('submit', async event => {
+    event.preventDefault();
+    const routine = {
+      id: routineEditorId, startTime: $('#routineStart').value, duration: Number($('#routineDuration').value),
+      type: $('#routineType').value, title: $('#routineTitle').value, category: $('#routineCategory').value,
+      subjectId: $('#routineSubject').value, preAlertMode: $('#routinePreMode').value,
+      preAlertMinutes: Number($('#routinePreMinutes').value), eventMessage: $('#routineMessage').value,
+      activeDays: $$('[data-routine-day]:checked').map(input => Number(input.dataset.routineDay)),
+      enabled: $('#routineEnabled').checked,
+      weekStart: $('#routineWeekScope').value === 'week' ? $('#routineWeekStart').value : ''
+    };
+    if (await runAction(event.submitter, 'saveRoutine', { classId: appData.classId, weekStart: scheduleWeekStart, routine }, '저장 중…')) {
+      fillRoutineEditor('');
+      toast('개별 일정을 저장했어요.');
+    }
+  });
+  $('#classPreferencesForm').addEventListener('submit', async event => {
+    event.preventDefault();
+    const preferences = {
+      sound: $('#soundEnabled').checked, globalSound: $('#globalSound').value, soundVolume: Number($('#soundVolume').value),
+      commonMessages: { break: $('#commonBreakMessage').value, middlePlay: $('#commonMiddleMessage').value, lunch: $('#commonLunchMessage').value }
+    };
+    if (await runAction(event.submitter, 'saveClassPreferences', { classId: appData.classId, weekStart: scheduleWeekStart, preferences }, '저장 중…')) toast('공통 안내와 알림음을 저장했어요.');
+  });
+  $('#testPreferenceSound').addEventListener('click', () => { playAlertSound($('#globalSound').value, $('#soundVolume').value, true); toast('선택한 알림음을 3회 시험합니다.'); });
+  $('#deleteRoutineButton').addEventListener('click', async event => {
+    if (!routineEditorId || !confirm('선택한 개별 일정을 삭제할까요?')) return;
+    if (await runAction(event.currentTarget, 'deleteRoutine', { classId: appData.classId, weekStart: scheduleWeekStart, routineId: routineEditorId }, '삭제 중…')) {
+      fillRoutineEditor('');
+      toast('개별 일정을 삭제했어요.');
+    }
+  });
+  $('#subjectSettingForm').addEventListener('submit', async event => {
+    event.preventDefault();
+    const payload = {
+      classId: appData.classId, weekStart: scheduleWeekStart, subjectId: subjectEditorId,
+      name: $('#subjectSettingName').value, message: $('#subjectSettingMessage').value,
+      resourceLabel: $('#subjectResourceLabel').value, resourceUrl: $('#subjectResourceUrl').value,
+      color: (appData.subjects.find(item => item.subjectId === subjectEditorId) || {}).color || 'green', enabled: true
+    };
+    if (await runAction(event.submitter, 'saveSubjectSetting', payload, '저장 중…')) toast('과목 기본 안내와 링크를 저장했어요.');
+    updateSchoolTimetablePreview();
+  });
+
+  $('#schoolTimetableFile').addEventListener('change', async event => {
+    const file = event.target.files && event.target.files[0];
+    pendingSchoolTimetable = null;
+    $('#applySchoolTimetable').disabled = true;
+    if (!file) return;
+    try {
+      pendingSchoolTimetable = await SchoolTimetableImport.parseFile(file);
+      updateSchoolTimetablePreview();
+    } catch (error) {
+      $('#schoolTimetablePreview').textContent = errorText(error);
+      toast(errorText(error));
+    }
+  });
+  $('#applySchoolTimetable').addEventListener('click', async event => {
+    if (!pendingSchoolTimetable) return;
+    const mapped = mapSchoolTimetable(pendingSchoolTimetable);
+    if (mapped.missing.length) return updateSchoolTimetablePreview();
+    if (weekPlanDirty && !confirm('현재 화면의 저장하지 않은 시간표 변경을 버리고 XLSX를 적용할까요?')) return;
+    const weekStart = pendingSchoolTimetable.weekStart;
+    const fallbackSchedule = collectWeekPlan().schedule;
+    setBusy(event.currentTarget, true, '시간표 확인 중…');
+    try {
+      scheduleWeekStart = weekStart;
+      weekPlanDirty = false;
+      renderedPlanKey = '';
+      applyData(await callServer('getAppState', { classId: appData.classId, weekStart }));
+      const current = appData.weekPlan;
+      if (current.revision && !confirm(`${weekStart} 주에 저장된 시간표가 있습니다. 학사관리 XLSX 내용으로 덮어쓸까요?`)) return;
+      const plan = current.revision ? JSON.parse(JSON.stringify(current.plan)) : { schedule:fallbackSchedule, timetable:{} };
+      plan.schedule.periodCount = Math.max(Number(plan.schedule.periodCount) || 1, pendingSchoolTimetable.maxPeriod);
+      plan.timetable = mapped.timetable;
+      applyData(await callServer('saveWeekPlan', { classId: appData.classId, weekStart, revision:current.revision, plan }));
+      renderedPlanKey = '';
+      renderWeekPlan(appData.weekPlan);
+      toast(`${weekStart} 주 시간표를 XLSX에서 저장했어요.`);
+    } catch (error) { toast(errorText(error)); }
+    finally { setBusy(event.currentTarget, false); }
+  });
+
+  function applySubjectDefault(name) {
+    const subject = (appData.subjects || []).find(item => item.name === name || item.subjectId === name);
+    if (!subject) return false;
+    $('#sessionSubject').value = subject.name;
+    if (!$('#sessionTitle').value.trim()) $('#sessionTitle').value = subject.name;
+    if (!$('#sessionMessage').value.trim()) $('#sessionMessage').value = subject.message || '';
+    if (!$('#resourceLabel').value.trim()) $('#resourceLabel').value = subject.resourceLabel || '';
+    if (!$('#resourceUrl').value.trim()) $('#resourceUrl').value = subject.resourceUrl || '';
+    return true;
+  }
+
+  $('#applySubjectDefault').addEventListener('click', () => {
+    if (applySubjectDefault($('#sessionSubject').value.trim())) toast('과목 기본 안내와 링크를 불러왔어요.');
+    else toast('등록된 과목 이름을 먼저 선택해 주세요.');
+  });
+
+  $('#teacherTodaySchedule').addEventListener('click', event => {
+    const button = event.target.closest('[data-use-schedule]');
+    if (!button) return;
+    const item = (appData.todaySchedule || [])[Number(button.dataset.useSchedule)];
+    if (!item) return;
+    $('#sessionSubject').value = item.subject || item.title || '';
+    $('#sessionTitle').value = item.title || '';
+    $('#sessionMessage').value = item.message || '';
+    $('#resourceLabel').value = item.resourceLabel || '';
+    $('#resourceUrl').value = item.resourceUrl || '';
+    $('#sessionForm').scrollIntoView({ behavior:'smooth', block:'start' });
+    toast(`${item.title} 수업을 게시 양식에 불러왔어요.`);
+  });
+
+  $('#routineRecordList').addEventListener('click', async event => {
+    const button = event.target.closest('[data-record-routine]');
+    if (!button) return;
+    const routineId = button.dataset.recordRoutine;
+    const item = (appData.todaySchedule || []).find(entry => entry.id === routineId);
+    if (!item) return;
+    if (button.dataset.recorded === 'true') {
+      if (!confirm('이 일정의 수동 종료 기록을 취소할까요?')) return;
+      if (await runAction(button, 'undoRoutineCompletion', { classId: appData.classId, weekStart: scheduleWeekStart, routineId }, '취소 중…')) toast('종료 기록을 취소했어요. 시간상 종료 표시는 유지됩니다.');
+    } else if (item.type === 'class') {
+      selectedRecordRoutineId = routineId;
+      $('#routineRecordTitle').textContent = `${item.title} 수업 종료`;
+      $('#routineStudentNote').value = '';
+      $('#routineTeacherNote').value = '';
+      $('#routineRecordDialog').showModal();
+    } else {
+      if (await runAction(button, 'completeRoutine', { classId: appData.classId, weekStart: scheduleWeekStart, routineId }, '기록 중…')) toast('일정 종료를 기록했어요.');
+    }
+  });
+  $('#cancelRoutineRecord').addEventListener('click', () => $('#routineRecordDialog').close());
+  $('#routineRecordForm').addEventListener('submit', async event => {
+    event.preventDefault();
+    const saved = await runAction(event.submitter, 'completeRoutine', {
+      classId: appData.classId, weekStart: scheduleWeekStart, routineId: selectedRecordRoutineId,
+      studentNote: $('#routineStudentNote').value, teacherNote: $('#routineTeacherNote').value
+    }, '기록 중…');
+    if (saved) { $('#routineRecordDialog').close(); selectedRecordRoutineId = ''; toast('수업 종료와 다음 수업 메모를 저장했어요.'); }
+  });
+  $('#loadRoutineHistory').addEventListener('click', async event => {
+    const date = $('#routineHistoryDate').value;
+    if (!date) return toast('조회할 날짜를 선택해 주세요.');
+    setBusy(event.currentTarget, true, '조회 중…');
+    try {
+      selectedRoutineHistory = await callServer('getRoutineHistory', { classId: appData.classId, date });
+      $('#routineHistoryList').innerHTML = selectedRoutineHistory.records.length
+        ? selectedRoutineHistory.records.map(row => `<div class="history-record-line"><time>${escapeHtml(row.scheduledTime)}</time><b>${escapeHtml(row.title)}</b><span>${escapeHtml(row.completedAt)} 종료</span></div>`).join('')
+        : '<p>이 날짜에 직접 기록한 일정이 없습니다.</p>';
+      $('#downloadRoutineHistory').disabled = !selectedRoutineHistory.records.length;
+    } catch (error) { toast(errorText(error)); }
+    finally { setBusy(event.currentTarget, false); }
+  });
+  $('#routineHistoryDate').addEventListener('change', () => {
+    selectedRoutineHistory = null;
+    $('#downloadRoutineHistory').disabled = true;
+    $('#routineHistoryList').textContent = '';
+  });
+  $('#downloadRoutineHistory').addEventListener('click', () => {
+    if (!selectedRoutineHistory || !selectedRoutineHistory.records.length) return;
+    const cell = value => {
+      const source = String(value == null ? '' : value);
+      const safe = /^[=+\-@]/.test(source) ? `'${source}` : source;
+      return `"${safe.replaceAll('"', '""')}"`;
+    };
+    const rows = [['날짜','일정','예정시간','완료시간','상태'], ...selectedRoutineHistory.records.map(row => [selectedRoutineHistory.date, row.title, row.scheduledTime, row.completedAt, row.status])];
+    const url = URL.createObjectURL(new Blob(['\uFEFF' + rows.map(row => row.map(cell).join(',')).join('\r\n')], { type:'text/csv;charset=utf-8' }));
+    const link = document.createElement('a');
+    link.href = url; link.download = `교실루틴_기록_${selectedRoutineHistory.date}.csv`; link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  });
+
+  $('#seatSections').addEventListener('change', async event => {
+    if (!seatingDraft || seatingSaving) return;
+    const sections = Math.max(1, Math.min(6, Number(event.target.value) || 3));
+    seatingDraft.layout.sections = sections;
+    seatingDraft.layout.seats = Array.from({ length:sections }, (_, index) => seatingDraft.layout.seats[index] || 2);
+    seatingDraft.current = null;
+    selectedSeatId = '';
+    renderSeatWidths(); renderSeatBoard();
+    await persistSeating(event.target, '저장 중…');
+  });
+  $('#seatRows').addEventListener('change', async event => {
+    if (!seatingDraft || seatingSaving) return;
+    seatingDraft.layout.rows = Math.max(1, Math.min(10, Number(event.target.value) || 5));
+    seatingDraft.current = null;
+    selectedSeatId = '';
+    renderSeatBoard();
+    await persistSeating(event.target, '저장 중…');
+  });
+  $('#seatWidths').addEventListener('change', async event => {
+    const input = event.target.closest('[data-seat-width]');
+    if (!input || !seatingDraft || seatingSaving) return;
+    seatingDraft.layout.seats[Number(input.dataset.seatWidth)] = Math.max(1, Math.min(6, Number(input.value) || 2));
+    seatingDraft.current = null;
+    selectedSeatId = '';
+    renderSeatBoard();
+    await persistSeating(input, '저장 중…');
+  });
+  [['seatMixGender','mixGender'], ['seatAvoidPairs','avoidPairs'], ['seatAvoidSeats','avoidSeats']].forEach(([id, option]) => {
+    $('#' + id).addEventListener('change', async event => {
+      if (!seatingDraft || seatingSaving) return;
+      seatingDraft.options[option] = event.target.checked;
+      await persistSeating(event.target, '저장 중…');
+    });
+  });
+  $('#generateSeating').addEventListener('click', async event => {
+    if (!seatingDraft || seatingSaving) return;
+    const roster = appData.roster || [];
+    if (!roster.length) return toast('먼저 학생 이메일 명렬을 등록해 주세요.');
+    if (seatingDraft.options.mixGender && roster.some(student => !student.gender)) return toast('성별 균형을 쓰려면 모든 학생의 성별을 명렬에 입력해 주세요.');
+    if (seatSlots(seatingDraft.layout).length < roster.length) return toast('좌석 수가 학생 수보다 적습니다. 교실 크기를 늘려 주세요.');
+    let best = null, bestScore = Infinity;
+    for (let attempt = 0; attempt < 120; attempt += 1) {
+      const candidate = generateSeatCandidate(roster);
+      const score = seatingPenalty(candidate, seatingDraft.history, seatingDraft.options);
+      if (score < bestScore) { best = candidate; bestScore = score; }
+      if (score === 0) break;
+    }
+    seatingDraft.current = best;
+    selectedSeatId = '';
+    renderSeatBoard();
+    if (await persistSeating(event.currentTarget, '저장 중…')) toast(bestScore ? '새 배치를 저장했어요. 이전 자리나 짝이 일부 겹칠 수 있습니다.' : '새 배치를 저장했어요. 확인 후 확정해 주세요.');
+  });
+  $('#seatingBoard').addEventListener('click', async event => {
+    const button = event.target.closest('[data-seat-id]');
+    if (!button || !seatingDraft || !seatingDraft.current || seatingSaving) return;
+    const id = button.dataset.seatId;
+    if (!selectedSeatId) { selectedSeatId = id; renderSeatBoard(); return toast('바꿀 다른 자리를 눌러 주세요.'); }
+    if (selectedSeatId === id) { selectedSeatId = ''; renderSeatBoard(); return; }
+    const seats = seatingDraft.current.seats;
+    [seats[selectedSeatId], seats[id]] = [seats[id] || '', seats[selectedSeatId] || ''];
+    selectedSeatId = '';
+    renderSeatBoard();
+    if (await persistSeating($('#confirmSeating'), '저장 중…')) toast('자리 교환을 자동 저장했어요.');
+  });
+  $('#confirmSeating').addEventListener('click', async event => {
+    if (!seatingDraft || !seatingDraft.current || seatingSaving) return toast('먼저 새 자리 배치를 만드세요.');
+    const entry = JSON.parse(JSON.stringify(seatingDraft.current));
+    entry.savedAt = new Date().toISOString();
+    seatingDraft.current.savedAt = entry.savedAt;
+    seatingDraft.history.push(entry);
+    if (await persistSeating(event.currentTarget, '확정 중…')) toast(`${seatingDraft.history.length}회차 자리 배치를 확정했어요.`);
+  });
+
+  $('#dutyTerm').addEventListener('input', event => {
+    if (!dutyDraft) return;
+    dutyDraft.term = event.target.value;
+    markDutyDirty();
+  });
+  $('#addDutyRole').addEventListener('click', () => {
+    if (!dutyDraft) return;
+    if (dutyDraft.roles.length >= 60) return toast('역할은 최대 60개까지 저장할 수 있습니다.');
+    const id = `duty-${crypto.randomUUID()}`;
+    dutyDraft.roles.push({ id, name:'새 역할', description:'', category:'classroom', capacity:1, color:'green' });
+    dutyDraft.assignments[id] = [''];
+    markDutyDirty(); renderDutyEditorList();
+    $('#dutyPanel').open = true;
+  });
+  $('#dutyEditorList').addEventListener('input', event => {
+    const field = event.target.dataset.dutyField;
+    if (!field || field === 'capacity' || !dutyDraft) return;
+    const id = event.target.closest('[data-duty-role]')?.dataset.dutyRole;
+    const role = dutyDraft.roles.find(item => item.id === id);
+    if (!role) return;
+    role[field] = event.target.value;
+    markDutyDirty();
+  });
+  $('#dutyEditorList').addEventListener('change', event => {
+    if (!dutyDraft) return;
+    const target = event.target;
+    if (target.dataset.dutySlot != null) {
+      const id = target.dataset.dutyId;
+      dutyDraft.assignments[id] ||= [];
+      dutyDraft.assignments[id][Number(target.dataset.dutySlot)] = target.value;
+      markDutyDirty();
+    } else if (target.dataset.dutyField === 'capacity') {
+      const id = target.closest('[data-duty-role]')?.dataset.dutyRole;
+      const role = dutyDraft.roles.find(item => item.id === id);
+      if (!role) return;
+      const capacity = Math.max(1, Math.min(12, Number(target.value) || 1));
+      const assignments = dutyDraft.assignments[id] || [];
+      if (assignments.slice(capacity).some(Boolean) && !confirm('정원을 줄이면 초과된 학생 배정이 사라집니다. 계속할까요?')) {
+        target.value = role.capacity; return;
+      }
+      role.capacity = capacity;
+      dutyDraft.assignments[id] = assignments.slice(0, capacity);
+      markDutyDirty(); renderDutyEditorList();
+    }
+  });
+  $('#dutyEditorList').addEventListener('click', event => {
+    const button = event.target.closest('[data-delete-duty]');
+    if (!button || !dutyDraft) return;
+    const id = button.dataset.deleteDuty;
+    const role = dutyDraft.roles.find(item => item.id === id);
+    if (!role || !confirm(`“${role.name}” 역할과 배정을 삭제할까요?`)) return;
+    dutyDraft.roles = dutyDraft.roles.filter(item => item.id !== id);
+    delete dutyDraft.assignments[id];
+    markDutyDirty(); renderDutyEditorList();
+  });
+  $('#saveDutyBoard').addEventListener('click', async event => {
+    if (!dutyDraft) return;
+    if (dutyDraft.roles.some(role => !String(role.name || '').trim())) return toast('이름이 없는 역할을 확인해 주세요.');
+    const saved = await runAction(event.currentTarget, 'saveDutyBoard', {
+      classId: appData.classId, weekStart: scheduleWeekStart, expectedUpdatedAt: dutyUpdatedAt, board: dutyDraft
+    }, '저장 중…');
+    if (saved) {
+      dutyDirty = false;
+      dutyDraft = null;
+      renderDutyEditor(appData.dutyBoard, appData.roster || []);
+      toast('1인 1역 배정을 저장했어요.');
+    }
+  });
+  $('#printDutyBoard').addEventListener('click', () => {
+    if (!dutyDraft || !dutyDraft.roles.length) return toast('인쇄할 역할이 없습니다.');
+    if (dutyDirty && !confirm('저장하지 않은 배정을 인쇄할까요? 저장하려면 취소를 누르세요.')) return;
+    $('#dutyPrintTerm').textContent = dutyDraft.term || `${appData.classroom.className || '우리 반'} · 1인 1역`;
+    $('#dutyPrintGrid').style.setProperty('--print-rows', Math.ceil(dutyDraft.roles.length / 3));
+    $('#dutyPrintSheet').classList.toggle('many', dutyDraft.roles.length > 18);
+    $('#dutyPrintGrid').innerHTML = dutyDraft.roles.map(role => {
+      const names = (dutyDraft.assignments[role.id] || []).filter(Boolean).map(value => value.split('␟').slice(1).join('␟'));
+      return `<article><h2>${escapeHtml(role.name)}</h2><strong>${names.length ? names.map(escapeHtml).join(' · ') : '미배정'}</strong>${role.description ? `<p>${escapeHtml(role.description)}</p>` : ''}</article>`;
+    }).join('');
+    $('#dutyPrintSheet').hidden = false;
+    document.body.classList.add('print-duty');
+    requestAnimationFrame(() => window.print());
+  });
+  window.addEventListener('afterprint', () => {
+    document.body.classList.remove('print-duty');
+    $('#dutyPrintSheet').hidden = true;
+  });
+
+  $('#announcementForm').addEventListener('submit', async event => {
+    event.preventDefault();
+    if (await runAction(event.submitter, 'saveClassAnnouncement', {
+      classId: appData.classId, weekStart: scheduleWeekStart,
+      message: $('#announcementMessage').value, emphasis: $('#announcementEmphasis').value
+    }, '저장 중…')) toast('학생 화면 공지를 저장했어요.');
+  });
+
+  $('#classTimerPresets').addEventListener('click', async event => {
+    const button = event.target.closest('[data-timer-minutes]');
+    if (!button) return;
+    const minutes = Number(button.dataset.timerMinutes);
+    await runAction(button, 'startClassTimer', { classId: appData.classId, weekStart: scheduleWeekStart, minutes, label: $('#classTimerLabel').value }, '시작…');
+  });
+  $('#stopClassTimer').addEventListener('click', event => runAction(event.currentTarget, 'stopClassTimer', { classId: appData.classId, weekStart: scheduleWeekStart }, '중지…'));
+
+  $('#chooseDesktopBackup').addEventListener('click', () => $('#desktopBackupFile').click());
+  $('#desktopBackupFile').addEventListener('change', async event => {
+    const file = event.target.files && event.target.files[0];
+    if (!file) return;
+    try {
+      let data = JSON.parse((await file.text()).replace(/^\uFEFF/, ''));
+      if (data.storage && typeof data.storage === 'object') {
+        const storage = data.storage;
+        const decodeStored = value => {
+          if (typeof value !== 'string') return value;
+          try { return JSON.parse(value); } catch (_) { return value; }
+        };
+        data = {
+          version: data.version, exportedAt: data.savedAt,
+          settings: decodeStored(storage['classRoutine.settings.v3']), subjects: decodeStored(storage['classRoutine.subjects.v1']),
+          routines: decodeStored(storage['classRoutine.routines.v3']), records: decodeStored(storage['classRoutine.records.v2']),
+          handoffs: decodeStored(storage['classRoutine.handoffs.v1']), roster: decodeStored(storage['classRoutine.roster.v1']),
+          weeklyTimetables: decodeStored(storage['classRoutine.weeklyTimetables.v1']), duties: decodeStored(storage['classRoutine.duties.v1']),
+          seating: decodeStored(storage['classRoutine.seating.v1'])
+        };
+      }
+      if (!Array.isArray(data.subjects) && !Array.isArray(data.routines) && !data.weeklyTimetables) throw new Error('설치형 전체백업 또는 설정 파일 형식이 아닙니다.');
+      pendingDesktopBackup = {
+        version: data.version || 0,
+        subjects: Array.isArray(data.subjects) ? data.subjects : [],
+        routines: Array.isArray(data.routines) ? data.routines : [],
+        roster: Array.isArray(data.roster) ? data.roster : [],
+        weeklyTimetables: data.weeklyTimetables && typeof data.weeklyTimetables === 'object' ? data.weeklyTimetables : {},
+        duties: data.duties && typeof data.duties === 'object' ? data.duties : {},
+        settings: data.settings && typeof data.settings === 'object' ? {
+          sound: data.settings.sound, globalSound: data.settings.globalSound, soundVolume: data.settings.soundVolume,
+          commonMessages: data.settings.commonMessages, schoolLevel: data.settings.schoolLevel
+        } : null,
+        records: Array.isArray(data.records) ? data.records : [],
+        handoffs: Array.isArray(data.handoffs) ? data.handoffs : [],
+        seating: data.seating && typeof data.seating === 'object' ? data.seating : null
+      };
+      const available = {
+        subjects:Array.isArray(data.subjects), timetables:Boolean(data.weeklyTimetables), routines:Array.isArray(data.routines),
+        preferences:Boolean(data.settings), duties:Boolean(data.duties), students:Array.isArray(data.roster),
+        allergies:Array.isArray(data.roster), records:Array.isArray(data.records), handoffs:Array.isArray(data.handoffs), seating:Boolean(data.seating)
+      };
+      $$('[data-import-option]').forEach(input => {
+        const wasDisabled = input.disabled;
+        input.disabled = !available[input.dataset.importOption];
+        if (input.disabled) input.checked = false;
+        else if (wasDisabled && ['subjects','timetables','routines','preferences','duties','students'].includes(input.dataset.importOption)) input.checked = true;
+      });
+      const weeks = data.weeklyTimetables && typeof data.weeklyTimetables === 'object' ? Object.keys(data.weeklyTimetables).length : 0;
+      const roster = Array.isArray(data.roster) ? data.roster : [];
+      const missingEmails = roster.filter(item => !String(item.email || '').trim()).length;
+      const savedEmails = roster.length - missingEmails;
+      if (roster.length) {
+        $('#rosterInput').value = roster.map(item => {
+          const current = (appData.roster || []).find(student => String(student.number) === String(item.number) && student.name === item.name);
+          return `${item.email || (current && current.email) || ''}, ${item.number || ''}, ${item.name || ''}, ${item.gender || (current && current.gender) || ''}, ${(item.allergenCodes || []).join ? item.allergenCodes.join('|') : item.allergenCodes || ''}`;
+        }).join('\n');
+      }
+      $('#desktopImportPreview').innerHTML = `<b>${escapeHtml(file.name)}</b><span>과목 ${(data.subjects || []).length}개 · 주간 시간표 ${weeks}주 · 일정 ${(data.routines || []).length}개 · 학생 ${roster.length}명(백업 이메일 ${savedEmails}명) · 역할 ${(data.duties && data.duties.roles || []).length}개 · 종료 기록 ${(data.records || []).length}건 · 전달 메모 ${(data.handoffs || []).length}건 · 자리 이력 ${(data.seating && data.seating.history || []).length}회</span><small>${missingEmails ? `이메일이 없는 ${missingEmails}명도 학생 명렬로 저장됩니다. 로그인은 나중에 이메일을 연결하면 됩니다. 아래 명렬에서 이메일을 적고 함께 가져올 수도 있습니다. ` : '학생 이메일 계정을 함께 연결할 수 있습니다. '}선택하지 않은 항목과 API 키·비공개 메모는 전송하지 않습니다.</small>`;
+      $('#importDesktopBackup').disabled = false;
+    } catch (error) {
+      pendingDesktopBackup = null; $('#importDesktopBackup').disabled = true;
+      $('#desktopImportPreview').textContent = '파일을 읽지 못했습니다. 설치형의 전체백업 JSON인지 확인해 주세요.';
+      toast(errorText(error));
+    }
+  });
+
+  $('#importDesktopBackup').addEventListener('click', async event => {
+    if (!pendingDesktopBackup) return;
+    const options = {};
+    $$('[data-import-option]').forEach(input => { options[input.dataset.importOption] = input.checked; });
+    const confirmEmptyRoutines = Boolean(options.routines && !pendingDesktopBackup.routines.length);
+    const confirmEmptyDuties = Boolean(options.duties && !(pendingDesktopBackup.duties.roles || []).length);
+    if (confirmEmptyRoutines && !confirm('백업에 반복 일정이 없습니다. 현재 반복 일정을 비우거나 빈 상태로 가져올까요?')) return;
+    if (confirmEmptyDuties && !confirm('백업에 1인 1역 역할이 없습니다. 현재 역할 배정을 비우거나 빈 상태로 가져올까요?')) return;
+    if (options.allergies && !confirm('번호와 이름이 모두 일치하는 등록 학생의 알레르기 정보를 갱신할까요?')) return;
+    if ((options.records || options.handoffs) && !confirm('선택한 종료 기록과 전달 메모에는 학생·교사 정보가 포함될 수 있습니다. 이 학급의 비공개 Google 시트로 가져올까요?')) return;
+    if (!confirm('선택한 과목·시간표·일정·역할·공통 설정은 이 학급의 같은 항목을 덮어쓸 수 있습니다. 가져오기를 계속할까요?')) return;
+    const overwriteSeating = Boolean(options.seating && appData.seating && appData.seating.revision);
+    if (overwriteSeating && !confirm('현재 저장된 자리 배치와 이력을 백업 파일의 자리 배치로 덮어쓸까요? 기존 자리 이력은 복구할 수 없습니다.')) return;
+    const selectedBackup = { version: pendingDesktopBackup.version };
+    if (options.subjects) selectedBackup.subjects = pendingDesktopBackup.subjects;
+    if (options.timetables) selectedBackup.weeklyTimetables = pendingDesktopBackup.weeklyTimetables;
+    if (options.routines) selectedBackup.routines = pendingDesktopBackup.routines;
+    if (options.duties) selectedBackup.duties = pendingDesktopBackup.duties;
+    if (options.preferences || options.timetables) selectedBackup.settings = options.preferences
+      ? pendingDesktopBackup.settings : { schoolLevel: pendingDesktopBackup.settings && pendingDesktopBackup.settings.schoolLevel };
+    if (options.records) selectedBackup.records = pendingDesktopBackup.records;
+    if (options.handoffs) selectedBackup.handoffs = pendingDesktopBackup.handoffs;
+    if (options.seating) selectedBackup.seating = pendingDesktopBackup.seating;
+    if (options.students) selectedBackup.roster = pendingDesktopBackup.roster.map(item => Object.assign({
+      email:item.email, number:item.number, name:item.name
+    }, item.gender != null ? { gender:item.gender } : {}, options.allergies ? { allergenCodes:item.allergenCodes } : {}));
+    if (options.students) {
+      const edits = rosterEntriesFromInput();
+      const byKey = new Map(edits.map(item => [`${item.number}␟${item.name}`, item]));
+      if (edits.length !== selectedBackup.roster.length || byKey.size !== edits.length
+        || selectedBackup.roster.some(item => !byKey.has(`${item.number}␟${item.name}`))) {
+        return toast('명렬 입력 칸의 번호·이름이 백업과 다릅니다. 백업 파일을 다시 선택해 주세요.');
+      }
+      selectedBackup.roster = selectedBackup.roster.map(item => {
+        const edited = byKey.get(`${item.number}␟${item.name}`);
+        return Object.assign({}, item, { email: edited.email || '', gender: edited.gender || item.gender || '' },
+          options.allergies ? { allergenCodes: edited.allergenCodes } : {});
+      });
+    }
+    else if (options.allergies) selectedBackup.roster = pendingDesktopBackup.roster.map(item => ({ number:item.number, name:item.name, allergenCodes:item.allergenCodes }));
+    if (await runAction(event.currentTarget, 'importDesktopBackup', { classId: appData.classId, weekStart: scheduleWeekStart, backup: selectedBackup, options, overwriteSeating, confirmEmptyRoutines, confirmEmptyDuties }, '가져오는 중…')) {
+      const result = appData.importSummary || {};
+      if (result.latestWeek) scheduleWeekStart = result.latestWeek;
+      weekPlanDirty = false; renderedPlanKey = '';
+      renderWeekPlan(appData.weekPlan);
+      toast(`과목 ${result.subjects || 0}개 · 시간표 ${result.weeks || 0}주 · 일정 ${result.routines || 0}개 · 학생 명렬 ${result.students || 0}명(로그인 ${result.linkedAccounts || 0}명) · 종료 기록 ${result.records || 0}건 · 전달 메모 ${result.handoffs || 0}건 · 자리 이력 ${result.seatingHistory || 0}회를 가져왔어요.`);
+    }
+  });
+
+  $('#exportClassBackup').addEventListener('click', async event => {
+    if (!confirm('학생 명렬·알레르기·교사 전달 메모까지 포함된 전체 백업을 내려받을까요? 개인 드라이브나 학교가 승인한 위치에만 보관하세요.')) return;
+    setBusy(event.currentTarget, true, '백업 준비 중…');
+    try {
+      const backup = await callServer('exportClassBackup', { classId: appData.classId });
+      const url = URL.createObjectURL(new Blob([JSON.stringify(backup, null, 2)], { type:'application/json;charset=utf-8' }));
+      const link = document.createElement('a');
+      const date = new Intl.DateTimeFormat('sv-SE', { timeZone:'Asia/Seoul', year:'numeric', month:'2-digit', day:'2-digit' }).format(new Date());
+      link.href = url; link.download = `교실루틴_전체백업_${date}.json`; link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      toast('이 학급의 온라인 전체 백업을 내려받았어요.');
+    } catch (error) { toast(errorText(error)); }
+    finally { setBusy(event.currentTarget, false); }
+  });
+
+  $('#minimizeClassTimer').addEventListener('click', () => {
+    dismissedTimerId = appData && appData.classTimer && appData.classTimer.timerId || '';
+    $('#classTimerLayer').hidden = true;
+  });
+
   $('#serviceForm').addEventListener('submit', async event => {
     event.preventDefault();
     const payload = {
@@ -268,6 +1460,44 @@
     };
     serviceEditorClassId = '';
     if (await runAction(event.submitter, 'saveServiceSettings', payload, '저장 중…')) toast('급식·날씨 연동 설정을 저장했어요.');
+  });
+
+  async function findSchool() {
+    const query = $('#neisSchoolSearch').value.trim();
+    const button = $('#searchSchoolButton');
+    const results = $('#schoolSearchResults');
+    const status = $('#schoolSearchStatus');
+    results.hidden = true;
+    results.replaceChildren();
+    if (query.length < 2) { status.textContent = '학교 이름을 두 글자 이상 입력해 주세요.'; return; }
+    setBusy(button, true, '찾는 중…');
+    status.textContent = '나이스 학교기본정보에서 찾고 있어요.';
+    try {
+      const response = await callServer('searchSchools', { classId: appData.classId, query, neisApiKey: $('#neisApiKey').value });
+      const schools = Array.isArray(response.schools) ? response.schools : [];
+      status.textContent = response.message || '일치하는 학교가 없습니다.';
+      schools.forEach(school => {
+        const choice = document.createElement('button');
+        choice.type = 'button';
+        choice.className = 'school-result';
+        choice.innerHTML = `<b>${escapeHtml(school.schoolName)}</b><em>${escapeHtml(school.schoolType || '학교')}</em><span>${escapeHtml([school.officeName, school.address].filter(Boolean).join(' · '))}</span>`;
+        choice.addEventListener('click', () => {
+          $('#neisOfficeCode').value = school.officeCode;
+          $('#neisSchoolCode').value = school.schoolCode;
+          $('#neisSchoolSearch').value = school.schoolName;
+          status.textContent = `${school.schoolName}을 선택했습니다. 연동 설정 저장을 눌러 확정하세요.`;
+          results.hidden = true;
+        });
+        results.append(choice);
+      });
+      results.hidden = !schools.length;
+    } catch (error) { status.textContent = errorText(error); }
+    finally { setBusy(button, false); }
+  }
+
+  $('#searchSchoolButton').addEventListener('click', findSchool);
+  $('#neisSchoolSearch').addEventListener('keydown', event => {
+    if (event.key === 'Enter') { event.preventDefault(); findSchool(); }
   });
 
   $$('[data-refresh-daily]').forEach(button => button.addEventListener('click', event => runAction(event.currentTarget, 'refreshDailyInfo', { classId: appData.classId }, '…')));
@@ -291,16 +1521,45 @@
   });
 
   $('#fillRosterButton').addEventListener('click', () => {
-    $('#rosterInput').value = (appData.roster || []).map(student => `${student.email}, ${student.number || ''}, ${student.name}, ${(student.allergenCodes || []).join('|')}`).join('\n');
+    $('#rosterInput').value = (appData.roster || []).map(student => `${student.email}, ${student.number || ''}, ${student.name}, ${student.gender || ''}, ${(student.allergenCodes || []).join('|')}`).join('\n');
     toast('현재 명렬을 입력 칸에 불러왔어요.');
   });
 
-  $('#saveRosterButton').addEventListener('click', async event => {
-    const entries = $('#rosterInput').value.split(/\r?\n/).map(line => line.trim()).filter(Boolean).map(line => {
-      const [email, number, name, allergenCodes = ''] = line.split(',').map(value => value.trim());
-      return { email, number, name, allergenCodes };
+  function rosterEntriesFromInput() {
+    return $('#rosterInput').value.split(/\r?\n/).map(line => line.trim()).filter(Boolean).map(line => {
+      const parts = line.split(',').map(value => value.trim());
+      const [email, number, name] = parts;
+      const gender = parts.length > 4 ? parts[3] : undefined;
+      const allergenCodes = parts.length > 4 ? parts.slice(4).join(',') : parts[3] || '';
+      return { email, number, name, gender, allergenCodes };
     });
+  }
+
+  $('#saveRosterButton').addEventListener('click', async event => {
+    const entries = rosterEntriesFromInput().filter(item => item.email);
+    if (!entries.length) return toast('이메일을 입력한 학생이 없습니다. 명렬 학생은 그대로 보관됩니다.');
     if (await runAction(event.currentTarget, 'saveRoster', { classId: appData.classId, entries }, '등록 중…')) toast(`${entries.length}명의 로그인 계정을 등록했어요.`);
+  });
+
+  $('#syncRosterButton').addEventListener('click', async event => {
+    const entries = rosterEntriesFromInput();
+    if (!entries.length) { toast('전체 명렬 동기화에는 학생을 한 명 이상 입력해 주세요.'); return; }
+    if (entries.some(item => !item.email)) { toast('전체 로그인 동기화는 모든 학생 이메일을 입력한 뒤 실행해 주세요.'); return; }
+    const current = (appData.roster || []).filter(student => student.active !== false);
+    const incoming = new Set(entries.map(entry => String(entry.email || '').trim().toLowerCase()));
+    const removed = current.filter(student => !incoming.has(String(student.email || '').trim().toLowerCase()));
+    const names = removed.map(student => `${student.number || ''} ${student.name || student.email}`.trim());
+    const message = removed.length
+      ? `입력 명렬에서 빠진 ${removed.length}명의 로그인을 비활성화합니다. 기존 기록은 남습니다.\n\n${names.join('\n')}\n\n계속할까요?`
+      : '입력 명렬을 전체 명렬로 동기화합니다. 비활성화할 학생은 없습니다. 계속할까요?';
+    if (!confirm(message)) return;
+    const payload = {
+      classId: appData.classId, mode: 'sync', confirmDeactivation: true,
+      deactivateEmails: removed.map(student => student.email), entries
+    };
+    if (await runAction(event.currentTarget, 'saveRoster', payload, '동기화 중…')) {
+      toast(`명렬을 동기화했어요. ${removed.length}명의 로그인을 비활성화했습니다.`);
+    }
   });
 
   $('#helpList').addEventListener('click', async event => {
@@ -322,9 +1581,21 @@
   $('#cancelHelpButton').addEventListener('click', event => runAction(event.currentTarget, 'cancelHelp', { requestId: appData.helpRequest.requestId }, '취소 중…'));
   $('#exitButton').addEventListener('click', event => runAction(event.currentTarget, 'submitStudentResponse', { sessionId: appData.state.sessionId, type: 'exit', value: $('#exitText').value }, '보내는 중…'));
 
+  $$('[data-test-schedule-sound]').forEach(button => button.addEventListener('click', () => { unlockAlertAudio(); playAlertSound(null, null, true); toast('알림음을 시험합니다. 브라우저 탭이 열려 있어야 일정 알림이 나타납니다.'); }));
+  $('#testScheduleSound').addEventListener('click', () => { unlockAlertAudio(); playAlertSound(null, null, true); toast('알림음을 시험합니다. 브라우저 탭이 열려 있어야 일정 알림이 나타납니다.'); });
+  $('#confirmScheduleAlert').addEventListener('click', () => {
+    stopAlertSound();
+    activeScheduleAlertKey = '';
+    $('#scheduleAlertLayer').hidden = true;
+    $('#scheduleAlertLayer').dataset.manual = 'false';
+  });
+  $$('[data-open-meal]').forEach(button => button.addEventListener('click', openManualMeal));
+
   function updateCountdown() {
     const now = Date.now() + serverOffset;
     $('#serverClock').textContent = new Date(now).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
+    updateClassTimer();
+    updateScheduleAlert();
     if (!appData || appData.view !== 'student' || !appData.state) return;
     const countdown = $('#studentCountdown');
     if (!appData.state.endsAt) { countdown.textContent = '함께 진행'; return; }
@@ -333,6 +1604,8 @@
   }
 
   setInterval(updateCountdown, 1000);
+  $('#routineHistoryDate').value = new Intl.DateTimeFormat('sv-SE', { timeZone:'Asia/Seoul', year:'numeric', month:'2-digit', day:'2-digit' }).format(new Date());
+  window.addEventListener('resize', () => requestAnimationFrame(fitTeacherHeading));
   document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshState(); });
   initialize();
 })();

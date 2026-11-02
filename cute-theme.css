@@ -30,6 +30,9 @@
   --role-blue:#83b9ff;
   --role-yellow:#ffdc70;
   --role-green:#76d2b3;
+  --ui-control-height:44px;
+  --ui-control-text:13px;
+  --ui-control-radius:999px;
 }
 
 html,body { overflow-x:clip; }
@@ -414,4 +417,103 @@ footer { background:var(--cute-navy); border-top:8px solid var(--yellow); }
   body { background:#fff; }
   body::before { display:none; }
   .role-card { box-shadow:2px 2px 0 var(--role-color); }
+}
+
+/* Hallmark · existing app system: Sunny Classroom · shared navigation and controls */
+.topbar .mode-chip,
+.settings-topbar .line-link,
+.settings-topbar .dark-link,
+.roles-nav a,
+.seating-nav a,
+.guide-header nav a,
+.guide-header nav button {
+  min-height:var(--ui-control-height);
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  padding:9px 13px;
+  border-radius:var(--ui-control-radius);
+  font-size:var(--ui-control-text);
+  line-height:1.15;
+  white-space:nowrap;
+}
+.topbar .timer-trigger,.topbar .sound-toggle,.topbar .gear-link {
+  min-height:var(--ui-control-height);
+  font-size:var(--ui-control-text);
+}
+.topbar .gear-link { min-width:var(--ui-control-height); }
+.topbar .top-actions,.roles-nav,.seating-nav,.guide-header nav { flex-wrap:wrap; }
+.settings-routine button,.routine-actions button,.daily-brief-card header button,
+.timer-menu header button,.role-card header button {
+  width:var(--ui-control-height);
+  height:var(--ui-control-height);
+  min-width:var(--ui-control-height);
+  font-size:var(--ui-control-text);
+}
+.builder-actions button,.data-actions button,.timetable-toolbar button,
+.week-history-bar button,.timetable-footer button,.modal-actions button,
+.roster-control .line-button {
+  min-height:var(--ui-control-height);
+  font-size:var(--ui-control-text);
+  white-space:nowrap;
+}
+.schedule-conflict,.storage-warning {
+  padding:13px 16px;
+  border:2px solid var(--orange);
+  border-radius:16px;
+  color:var(--ink);
+  background:var(--cute-peach);
+  font-size:14px;
+  font-weight:750;
+  line-height:1.55;
+}
+.schedule-conflict { margin:14px 0; }
+.storage-warning { position:relative; z-index:100; margin:12px auto; width:min(1400px,calc(100% - 24px)); }
+.schedule-conflict[hidden],.storage-warning[hidden] { display:none; }
+.resource-link {
+  min-height:var(--ui-control-height);
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  padding:10px 17px;
+  border:2px solid var(--ink);
+  border-radius:var(--ui-control-radius);
+  color:var(--ink);
+  background:var(--yellow);
+  font-size:15px;
+  font-weight:900;
+  line-height:1.2;
+  text-decoration:none;
+  white-space:nowrap;
+}
+.resource-link:hover { background:var(--cute-lemon); transform:translateY(-1px); }
+.resource-link:focus-visible,.topbar a:focus-visible,.topbar button:focus-visible,
+.roles-nav a:focus-visible,.seating-nav a:focus-visible,.guide-header nav a:focus-visible,
+.guide-header nav button:focus-visible { outline:3px solid var(--cute-indigo); outline-offset:3px; }
+.resource-link:active { transform:translateY(0); }
+.resource-link:disabled { opacity:.55; cursor:not-allowed; }
+.alarm-messages .resource-link,.alert-messages .resource-link { margin:8px auto 0; }
+.message-grid .resource-link { margin-top:10px; justify-self:start; }
+.meal-card-wrap { position:relative; min-width:0; }
+.meal-card-wrap .daily-brief-card { height:100%; }
+.meal-card-wrap .daily-brief-card header { padding-right:54px; }
+.meal-refresh {
+  position:absolute;
+  top:20px;
+  right:22px;
+  width:var(--ui-control-height);
+  height:var(--ui-control-height);
+  border:2px solid var(--line);
+  border-radius:50%;
+  color:var(--ink);
+  background:var(--cute-white);
+  font-size:22px;
+  cursor:pointer;
+}
+.meal-refresh:focus-visible { outline:3px solid var(--cute-indigo); outline-offset:3px; }
+.meal-refresh:hover { background:var(--cute-lemon); }
+@media (max-width:620px) {
+  .topbar .top-actions,.roles-nav,.seating-nav,.guide-header nav { gap:6px; }
+  .topbar .mode-chip,.roles-nav a,.seating-nav a,.guide-header nav a,
+  .settings-topbar .line-link,.settings-topbar .dark-link { padding-inline:10px; }
 }

@@ -1,6 +1,8 @@
 **/**
 !appsscript.json
 !Code.gs
+!Recovery.gs
 !Index.html
 !Styles.html
 !Client.html
+!TimetableImport.html

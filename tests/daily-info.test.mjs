@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { loadDailyInfo, mealWarnings, normalizeAllergenCodes, outdoorGuidance, parseMealDishes, sanitizeIntegrationSettings } from "../daily-info.mjs";
+import { loadDailyInfo, mealWarnings, normalizeAllergenCodes, outdoorGuidance, parseMealDishes, sanitizeIntegrationSettings, searchSchools } from "../daily-info.mjs";
 
 test("meal allergen codes are parsed and matched without sending roster data", async () => {
   const dishes = parseMealDishes("현미밥<br/>달걀찜(1.2.)<br/>두부조림(5.6.)");
@@ -17,7 +17,7 @@ test("meal allergen codes are parsed and matched without sending roster data", a
     requested.push(String(url));
     return { ok:true, json:async () => ({ mealServiceDietInfo:[{}, { row:[{ MMEAL_SC_CODE:"2", MMEAL_SC_NM:"중식", MLSV_YMD:"20260904", DDISH_NM:"달걀찜(1.2.)", CAL_INFO:"500 Kcal" }] }] }) };
   };
-  const data = await loadDailyInfo({ neisOfficeCode:"B10", neisSchoolCode:"1234567" }, { now:new Date("2026-09-04T03:00:00Z"), fetchFn, force:true });
+  const data = await loadDailyInfo({ neisApiKey:"private-key", neisOfficeCode:"B10", neisSchoolCode:"1234567" }, { now:new Date("2026-09-04T03:00:00Z"), fetchFn, force:true });
   assert.equal(data.meal.status, "ready");
   assert.equal(data.weather.status, "unconfigured");
   assert.equal(requested.length, 1);
@@ -38,4 +38,22 @@ test("integration settings preserve saved keys when password fields are blank", 
   assert.equal(next.kmaApiKey, "keep-kma");
   assert.equal(next.neisOfficeCode, "C10");
   assert.equal(next.weatherNx, "60");
+});
+
+test("school name search returns safe selectable NEIS codes", async () => {
+  let requested = "";
+  const fetchFn = async url => {
+    requested = String(url);
+    return { ok:true, json:async () => ({ schoolInfo:[{}, { row:[{
+      ATPT_OFCDC_SC_CODE:"J10", ATPT_OFCDC_SC_NM:"경기도교육청", SD_SCHUL_CODE:"7530001",
+      SCHUL_NM:"한빛초등학교", SCHUL_KND_SC_NM:"초등학교", ORG_RDNMA:"경기도 한빛시 배움로 1"
+    }] }] }) };
+  };
+  const result = await searchSchools({ neisApiKey:"private-key" }, "한빛초등학교", { fetchFn });
+  assert.equal(result.status, "ready");
+  assert.deepEqual(result.schools[0], { officeCode:"J10", officeName:"경기도교육청", schoolCode:"7530001", schoolName:"한빛초등학교", schoolType:"초등학교", address:"경기도 한빛시 배움로 1" });
+  assert.match(requested, /\/hub\/schoolInfo\?/);
+  assert.match(requested, /SCHUL_NM=/);
+  assert.equal("neisApiKey" in result.schools[0], false);
+  assert.equal((await searchSchools({}, "한빛초등학교", { fetchFn })).status, "unconfigured");
 });
