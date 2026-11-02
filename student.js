@@ -144,7 +144,7 @@ function showAlert(routine, phase) {
   $("#alertLayer").hidden = false;
   playSound(routine.sound);
   const now = new Date();
-  if (phase === "start" && now.getHours() * 60 + now.getMinutes() === CR.toMinutes(routine.startTime)) window.classRoutineDesktop?.notifyRoutine({ id: routine.id, title: titleOf(routine), time: routine.startTime, phase, body: `${routine.startTime} · ${messages.event || messages.handoff || messages.subject || "시작할 시간이에요."}` });
+  if (phase === "start" && settings.windowsNotification && now.getHours() * 60 + now.getMinutes() === CR.toMinutes(routine.startTime)) window.classRoutineDesktop?.notifyRoutine({ id: routine.id, title: titleOf(routine), time: routine.startTime, phase, body: `${routine.startTime} · ${messages.event || messages.handoff || messages.subject || "시작할 시간이에요."}` });
   const seconds = cleaning ? Math.max(30, Number(settings.alertDisplaySeconds) || 0) : Number(settings.alertDisplaySeconds);
   if (seconds > 0) alertTimer = setTimeout(closeAlert, seconds * 1000);
 }

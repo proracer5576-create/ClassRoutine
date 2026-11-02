@@ -40,7 +40,7 @@ for (const id of ["dataConnectionBadge", "dataDirectoryPath", "dataRoutineCount"
 for (const id of ["importSchoolTimetable", "schoolTimetableFile", "timetableImportDialog", "timetableImportForm", "timetableImportSummary", "timetableImportPreview", "timetableImportMappings", "applySchoolTimetable"]) {
   assert.match(settingsHtml, new RegExp(`id="${id}"`), `settings timetable import must include #${id}.`);
 }
-for (const id of ["subjectResourceUrl", "settingRoutineResourceUrl", "timetableConflict"]) assert.match(settingsHtml, new RegExp(`id="${id}"`));
+for (const id of ["subjectResourceUrl", "settingRoutineResourceUrl", "timetableConflict", "windowsNotificationSetting"]) assert.match(settingsHtml, new RegExp(`id="${id}"`));
 assert.match(settingsHtml, /<script src="timetable-import\.js"><\/script>/, "settings must load the local XLSX timetable importer.");
 for (const id of ["neisSchoolSearch", "searchSchoolButton", "schoolSearchStatus", "schoolSearchResults", "selectedSchoolName", "neisOfficeCode", "neisSchoolCode", "weatherNx", "weatherNy", "saveIntegrationSettings", "testDailyInfo", "allergyStudentSelect", "studentEmail", "studentEmailStatus", "allergenOptions", "saveStudentAllergens"]) {
   assert.match(settingsHtml, new RegExp(`id="${id}"`), `settings daily info must include #${id}.`);

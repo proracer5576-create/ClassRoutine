@@ -45,6 +45,7 @@ function fillBaseSettings() {
   $("#lunchAfter").value = settings.lunch.afterPeriod;
   $("#lunchDuration").value = settings.lunch.duration;
   $("#soundSetting").checked = settings.sound;
+  $("#windowsNotificationSetting").checked = Boolean(settings.windowsNotification);
   selectGlobalSound(settings.globalSound || "chime", { saved: true });
   $("#soundVolume").value = settings.soundVolume ?? 100;
   $("#soundVolumeValue").value = `${$("#soundVolume").value}%`;
@@ -844,7 +845,8 @@ $$('[data-test-sound]').forEach(button => button.addEventListener("click", () =>
     ? `${button.querySelector("b").textContent} 선택 · 저장 대기 · ${$("#soundVolume").value}% · 3회 반복 중 (약 ${Math.ceil(timing.totalSeconds)}초)`
     : "브라우저의 소리 권한과 스피커 연결을 확인해 주세요.";
 }));
-$("#saveAlertSettings").addEventListener("click", () => { settings = { ...collectBaseSettings(), sound: $("#soundSetting").checked, globalSound: $("#globalSound").value, soundVolume: Number($("#soundVolume").value), reducedMotion: $("#motionSetting").checked, alertDisplaySeconds: Number($("#alertSeconds").value) }; CR.setSettings(settings); selectGlobalSound(settings.globalSound, { saved: true }); document.documentElement.classList.toggle("reduce-motion", settings.reducedMotion); toast(`${soundLabel(settings.globalSound)}을 모든 일정의 알림음으로 저장했어요.`); });
+$("#saveAlertSettings").addEventListener("click", () => { settings = { ...collectBaseSettings(), sound: $("#soundSetting").checked, windowsNotification: $("#windowsNotificationSetting").checked, globalSound: $("#globalSound").value, soundVolume: Number($("#soundVolume").value), reducedMotion: $("#motionSetting").checked, alertDisplaySeconds: Number($("#alertSeconds").value) }; CR.setSettings(settings); window.classRoutineDesktop?.setWindowsNotification?.(settings.windowsNotification); selectGlobalSound(settings.globalSound, { saved: true }); document.documentElement.classList.toggle("reduce-motion", settings.reducedMotion); toast(`${soundLabel(settings.globalSound)}을 모든 일정의 알림음으로 저장했어요.`); });
+window.classRoutineDesktop?.onWindowsNotificationChanged?.(enabled => { settings = { ...CR.getSettings(), windowsNotification: Boolean(enabled) }; CR.setSettings(settings); $("#windowsNotificationSetting").checked = Boolean(enabled); });
 function createFullBackup() {
   return { version: 4, exportedAt: new Date().toISOString(), settings: CR.getSettings(), subjects: CR.getSubjects(), routines: CR.getRoutines(), records: CR.getRecords(), handoffs: CR.getHandoffs(), memos: CR.load(CR.KEYS.memos, {}), roster: CR.load(CR.KEYS.roster, []), weeklyTimetables: CR.getWeeklyTimetables(), duties: CR.getDutyBoard(), seating: CR.getSeatBoard() };
 }

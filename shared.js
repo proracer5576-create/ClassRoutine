@@ -140,6 +140,7 @@
     className: "선생님",
     greeting: "오늘도 좋은 하루 보내세요.",
     sound: true,
+    windowsNotification: false,
     globalSound: "chime",
     soundVolume: 100,
     alertDisplaySeconds: 15,

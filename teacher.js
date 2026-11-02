@@ -185,7 +185,7 @@ function renderAlarmMeal(routine) {
   $("#alarmMealWarnings").hidden = !warnings.length;
   $("#alarmMealWarnings").innerHTML = warnings.length ? `<strong>알레르기 주의 학생 ${warnings.length}명</strong>${warnings.map(student => `<article><b>${escapeHtml(student.number)}번 ${escapeHtml(student.name)}</b><span>${student.dishes.map(dish => `${escapeHtml(dish.name)} — ${escapeHtml(dish.matchedNames.join("·"))}`).join("<br>")}</span></article>`).join("")}` : "";
 }
-function notifyDesktopRoutine(routine, phase) { const messages = CR.messagesFor(routine); window.classRoutineDesktop?.notifyRoutine({ id: routine.id, title: displayTitle(routine), time: routine.startTime, phase, body: `${routine.startTime} · ${messages.event || messages.handoff || messages.subject || (phase === "pre" ? "곧 시작해요." : "시작할 시간이에요.")}` }); }
+function notifyDesktopRoutine(routine, phase) { if (!settings.windowsNotification) return; const messages = CR.messagesFor(routine); window.classRoutineDesktop?.notifyRoutine({ id: routine.id, title: displayTitle(routine), time: routine.startTime, phase, body: `${routine.startTime} · ${messages.event || messages.handoff || messages.subject || (phase === "pre" ? "곧 시작해요." : "시작할 시간이에요.")}` }); }
 function closeAlarm() { clearTimeout(alarmTimer); CR.stopSound(); const dialog = $("#alarmDialog"); if (dialog.open) dialog.close(); activeAlarm = null; }
 function renderAlarm(routine, phase) {
   clearTimeout(alarmTimer);
@@ -275,6 +275,7 @@ $("#routineMessage").closest("label").after($("#routineResourceTemplate").conten
 const memoKey = CR.dateKey(); let memoTimer = null; $("#memo").value = memos[memoKey] || ""; $("#memo").oninput = event => { $("#memoState").textContent = "저장 중…"; clearTimeout(memoTimer); memoTimer = setTimeout(() => { memos[CR.dateKey()] = event.target.value; CR.save(CR.KEYS.memos, memos); $("#memoState").textContent = "저장됨"; }, 450); };
 CR.onChange(() => { renderAll(); renderQuickTimer(); }); renderAll(); renderQuickTimer(); restoreFiles(); loadDailyInfo();
 window.classRoutineDesktop?.onOpenRoutine(routineId => openRoutinePreview(routineId));
+window.classRoutineDesktop?.onWindowsNotificationChanged?.(enabled => { settings = { ...CR.getSettings(), windowsNotification: Boolean(enabled) }; CR.setSettings(settings); });
 const desktopRoutineId = new URLSearchParams(location.search).get("openRoutine");
 if (desktopRoutineId) queueMicrotask(() => openRoutinePreview(desktopRoutineId));
 setInterval(() => { dateTime(); renderQuickTimer(); updateAlarmTimes(); checkAlarms(); if (new Date().getSeconds() === 0) { renderRoutines(); renderNext(); renderSummary(); } }, 1000);

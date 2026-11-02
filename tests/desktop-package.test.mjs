@@ -15,7 +15,10 @@ test("desktop shell keeps data local and opens routine notifications", () => {
 
   assert.match(main, /path\.join\(app\.getPath\("documents"\), DATA_DIRECTORY_NAME\)/);
   assert.match(main, /new Tray\(/);
+  assert.match(main, /launchAtLogin:\s*false/);
+  assert.match(main, /windowsNotification:\s*false/);
   assert.match(main, /desktop:notify-routine/);
+  assert.match(main, /desktop:set-windows-notification/);
   assert.match(main, /desktop:open-routine/);
   assert.match(main, /payload\?\.phase !== "start"/);
   assert.match(main, /60 \* 1000/);

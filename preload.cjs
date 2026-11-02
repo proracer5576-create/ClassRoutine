@@ -5,6 +5,15 @@ contextBridge.exposeInMainWorld("classRoutineDesktop", Object.freeze({
   notifyRoutine(payload) {
     ipcRenderer.send("desktop:notify-routine", payload);
   },
+  setWindowsNotification(enabled) {
+    ipcRenderer.send("desktop:set-windows-notification", Boolean(enabled));
+  },
+  onWindowsNotificationChanged(callback) {
+    if (typeof callback !== "function") return () => {};
+    const listener = (_event, enabled) => callback(Boolean(enabled));
+    ipcRenderer.on("desktop:windows-notification-changed", listener);
+    return () => ipcRenderer.removeListener("desktop:windows-notification-changed", listener);
+  },
   openDataFolder() {
     return ipcRenderer.invoke("desktop:open-data-folder");
   },

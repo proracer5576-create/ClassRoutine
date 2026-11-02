@@ -18,7 +18,7 @@ let serverInstance;
 let mainWindow;
 let tray;
 let quitting = false;
-let desktopSettings = { launchAtLogin: true };
+let desktopSettings = { launchAtLogin: false, windowsNotification: false };
 let dataDirectory;
 let desktopSettingsPath;
 
@@ -174,6 +174,19 @@ function rebuildTrayMenu() {
     { label: "학생 화면 열기", click: () => openPage("student.html") },
     { label: "설정 열기", click: () => openPage("settings.html") },
     { type: "separator" },
+    {
+      label: "Windows 데스크톱 알림 사용",
+      type: "checkbox",
+      checked: Boolean(desktopSettings.windowsNotification),
+      click: async menuItem => {
+        desktopSettings.windowsNotification = menuItem.checked;
+        await saveDesktopSettings();
+        rebuildTrayMenu();
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send("desktop:windows-notification-changed", Boolean(desktopSettings.windowsNotification));
+        }
+      }
+    },
     { label: "Windows 알림 시험", click: () => showWindowsNotification({ title: "알림 시험", body: "Windows 알림을 누르면 대시보드가 열립니다." }) },
     { label: "데이터 폴더 열기", click: () => shell.openPath(dataDirectory) },
     {
@@ -228,8 +241,14 @@ if (gotLock) {
 
     ipcMain.on("desktop:notify-routine", (event, payload) => {
       if (!trustedLocalUrl(event.senderFrame.url)) return;
-      if (payload?.phase !== "start") return;
+      if (payload?.phase !== "start" || !desktopSettings.windowsNotification) return;
       showWindowsNotification(payload);
+    });
+    ipcMain.on("desktop:set-windows-notification", async (event, enabled) => {
+      if (!trustedLocalUrl(event.senderFrame.url)) return;
+      desktopSettings.windowsNotification = Boolean(enabled);
+      await saveDesktopSettings();
+      rebuildTrayMenu();
     });
     ipcMain.handle("desktop:open-data-folder", async event => {
       if (!trustedSender(event)) return { ok: false, error: "untrusted" };
