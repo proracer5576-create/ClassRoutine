@@ -64,6 +64,10 @@ button:active { transform:translateY(2px) scale(.99); }
 
 /* Shared navigation */
 .topbar,.board-header,.guide-header {
+  height:auto;
+  min-height:82px;
+  padding-block:10px;
+  gap:14px;
   border-bottom:2px solid var(--line);
   background:rgba(255,254,251,.9);
   box-shadow:0 8px 30px rgba(80,91,142,.08);
@@ -76,18 +80,18 @@ button:active { transform:translateY(2px) scale(.99); }
   box-shadow:4px 4px 0 var(--cute-pink);
 }
 .brand b,.class-mark strong,.guide-brand b { font-family:var(--font-display); font-weight:900; }
-.sound-toggle,.round-button,.mode-chip,.tool-button,.roles-nav a,.guide-header nav a,.guide-header nav button {
+.sound-toggle,.round-button,.mode-chip,.tool-button,.roles-nav a,.seating-nav a,.guide-header nav a,.guide-header nav button {
   border:2px solid var(--line);
   border-radius:999px;
   background:var(--cute-white);
 }
-.mode-chip.active,.roles-nav a.active {
+.mode-chip.active,.roles-nav a.active,.seating-nav a.active {
   color:var(--ink);
   border-color:var(--ink);
   background:var(--yellow);
   box-shadow:3px 3px 0 var(--cute-pink);
 }
-.sound-toggle:hover,.round-button:hover,.mode-chip:hover,.tool-button:hover,.roles-nav a:hover { transform:translateY(-2px) rotate(-1deg); box-shadow:0 5px 0 var(--cute-sky); }
+.sound-toggle:hover,.round-button:hover,.mode-chip:hover,.tool-button:hover,.roles-nav a:hover,.seating-nav a:hover { transform:translateY(-2px) rotate(-1deg); box-shadow:0 5px 0 var(--cute-sky); }
 
 /* Teacher dashboard */
 .hero {
@@ -357,6 +361,36 @@ footer { background:var(--cute-navy); border-top:8px solid var(--yellow); }
 .role-card header button { border:2px solid var(--line); border-radius:50%; background:var(--cute-white); }
 .role-slot select { border:2px solid var(--line); border-radius:12px; background:var(--cute-white); }
 .assignment-summary { padding:8px; border:2px solid var(--line); border-radius:22px; background:rgba(255,254,251,.75); }
+
+/* Seating studio */
+body.seating-page {
+  color:var(--ink);
+  background:
+    radial-gradient(circle at 8% 7%,var(--cute-lemon) 0 9%,transparent 9.2%),
+    radial-gradient(circle at 94% 16%,var(--cute-pink) 0 8%,transparent 8.2%),
+    radial-gradient(circle at 82% 86%,var(--cute-sky) 0 12%,transparent 12.2%),
+    var(--cream);
+  font-family:"Noto Sans KR","Malgun Gothic",sans-serif;
+}
+.seating-hero {
+  margin-bottom:28px;
+  padding:36px clamp(26px,4vw,52px);
+  border:2px solid var(--ink);
+  border-radius:38px 38px 14px 38px;
+  background:var(--cute-white);
+  box-shadow:9px 9px 0 var(--cute-mint);
+}
+.seating-hero .eyebrow,.panel-heading .eyebrow,.board-heading .eyebrow,.history-dialog .eyebrow { color:var(--orange); }
+.seating-hero h1,.panel-heading h2,.board-heading h2,.history-dialog h2 { font-family:var(--font-display); letter-spacing:-.05em; }
+.seating-hero h1 em { color:var(--green); }
+.hero-note { border:2px solid var(--ink); border-radius:22px; background:var(--cute-lemon); box-shadow:6px 6px 0 var(--cute-pink); }
+.seating-page .panel,.seating-page .board-area { border:2px solid var(--line); border-radius:26px 26px 26px 8px; background:var(--cute-white); box-shadow:7px 7px 0 var(--cute-sky); }
+.seating-page .board-area { border-color:var(--ink); box-shadow:9px 9px 0 var(--cute-lilac); }
+.seating-page .primary-action { border:2px solid var(--ink); border-radius:999px; color:var(--ink); background:var(--yellow); box-shadow:4px 4px 0 var(--ink); }
+.seating-page .primary-action:hover { background:var(--cute-pink); box-shadow:6px 6px 0 var(--ink); }
+.seating-page .secondary-action { border:2px solid var(--line); border-radius:999px; color:var(--ink); background:var(--cute-white); }
+.seating-page .secondary-action:hover { border-color:var(--ink); background:var(--cute-sky); box-shadow:3px 3px 0 var(--ink); }
+.seating-page .history-btn b { border:1px solid var(--line); background:var(--cute-lemon); }
 
 /* Guide */
 .reading-progress { height:6px; background:var(--orange); }
